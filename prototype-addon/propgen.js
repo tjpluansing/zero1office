@@ -505,11 +505,11 @@
     return out;
   }
 
-  // Karla's signature image (Paolo, 2026-11-24) goes just above the disclaimer. Outlook drafts made by the connector can't hold
+  // Karla's signature image (Paolo, 2026-11-24) goes just above the environment line (moved there 2026-11-25). Outlook drafts made by the connector can't hold
   // images, so the page shows where it goes and the user inserts it from their Outlook signature; the draft text stays image-free.
   var SIG_IMG = "files/karla-luansing-email-signature.jpg";
   function withSigImage(o) {
-    var cut = o.email.indexOf("<p>Disclaimer:");
+    var cut = o.email.indexOf("<p>Please consider the environment");
     if (o.kind === "generic" || cut < 0) return o.email;
     return o.email.slice(0, cut) + '<div class="pg-sig"><img src="' + SIG_IMG + '" alt="Karla Luansing, Health Benefit Consultant, Maxicare email signature" style="max-width:100%;height:auto;display:block;border-radius:6px"><p class="muted small" style="margin:4px 0 8px"><i>Signature image: insert it here in Outlook (Insert > Signature). It isn\'t part of the draft text.</i></p></div>' + o.email.slice(cut);
   }
@@ -530,7 +530,7 @@
         return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r"><button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button></td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
-    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the disclaimer (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
       (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
