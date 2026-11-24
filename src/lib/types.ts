@@ -132,3 +132,74 @@ export interface CreateUserInput {
   mode: "invite" | "temp_password";
   overrides: Override[];
 }
+
+// --- Billing & SOA: collections tracker ---
+export const PROVIDERS = ["Maxicare", "Medicard", "Intellicare", "IMS", "KHL", "FWD"] as const;
+
+export type SoaStage =
+  | "draft" | "awaiting_payment" | "awaiting_docs" | "awaiting_commission"
+  | "receipt_due" | "receipt_issued" | "closed";
+
+export interface SoaRow {
+  id: string;
+  soa_no: string;
+  provider: string;
+  account_name: string;
+  client_id: string | null;
+  product: string | null;
+  coverage_period: string | null;
+  amount: number;
+  released_on: string | null;
+  due_on: string | null;
+  paid_on: string | null;
+  paid_amount: number | null;
+  payment_ref: string | null;
+  provider_receipt_no: string | null;
+  provider_receipt_on: string | null;
+  cwt_applicable: boolean;
+  cwt_amount: number | null;
+  form_2307_on: string | null;
+  commission_rate: number | null;
+  commission_expected: number | null;
+  disbursement_id: string | null;
+  commission_amount: number | null;
+  closed_on: string | null;
+  ghl_link: string | null;
+  notes: string | null;
+  stage: SoaStage;
+  stage_changed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Fields a person can set; stage and timestamps come from the server. */
+export type SoaInput = Partial<Omit<SoaRow, "stage" | "stage_changed_at" | "created_at" | "updated_at">>
+  & { soa_no: string; provider: string; account_name: string; amount: number };
+
+export interface DisbursementRow {
+  id: string;
+  provider: string;
+  received_on: string;
+  reference: string | null;
+  gross_amount: number;
+  withholding_amount: number;
+  net_amount: number;
+  receipt_no: string | null;
+  receipt_issued_on: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export type DisbursementInput = Partial<Omit<DisbursementRow, "net_amount" | "created_at">>
+  & { provider: string; received_on: string };
+
+export interface SoaEvent {
+  id: number;
+  soa_id: string;
+  at: string;
+  actor_email: string | null;
+  kind: "stage" | "note" | "follow_up";
+  body: string;
+}
+
+export type SoaExportRow = Record<string, string | number | boolean | null>;

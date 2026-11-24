@@ -10,6 +10,7 @@ import UsersPage from "./pages/admin/Users";
 import {
   ChangePasswordPage, ForgotPasswordPage, LoginPage, PendingPage, ResetPasswordPage,
 } from "./pages/auth";
+import BillingPage from "./pages/Billing";
 import ClientsPage from "./pages/Clients";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
@@ -44,9 +45,7 @@ export default function App() {
               <Route path="quotes" element={<RequirePermission permission="quotes.view">
                 <ModulePage page="quotes" title="Quoting & Proposals" description="Plan comparisons and proposals for HMO, life, pre-need and non-life." />
               </RequirePermission>} />
-              <Route path="billing" element={<RequirePermission permission="billing.view">
-                <ModulePage page="billing" title="Billing & SOA" description="Statements of account and payment follow-ups." />
-              </RequirePermission>} />
+              <Route path="billing" element={<RequirePermission permission="billing.view"><BillingPage /></RequirePermission>} />
               <Route path="reports" element={<RequirePermission permission="reports.view">
                 <ModulePage page="reports" title="Reports" description="Production, renewals and pipeline reports." />
               </RequirePermission>} />
