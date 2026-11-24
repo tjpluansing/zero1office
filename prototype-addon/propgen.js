@@ -307,8 +307,10 @@
     var out = k === "generic" ? genericEmail(c) : maxicareEmail(k, c);
     out.to = c.email; out.kind = k; out.co = G.co; out.type = G.type; out.c = c;
     out.files = filesFor(G.co, G.type);
+    // Paolo, 2026-11-25: the proposal is saved as a PDF named "Client Name_Client Age_MyMaxicare" and attached second.
+    if (k !== "generic") out.files.splice(Math.min(1, out.files.length), 0, { gen: "pdf", name: pdfName(c), label: "Your MyMaxicare proposal (PDF)" });
     out.email = emailTemplate(k, c, out.files);
-    out.html = out.email + "<hr>" + out.proposal;
+    out.html = k === "generic" ? out.email + "<hr>" + out.proposal : out.email;
     G.out = out; G.draft = null; G.mailErr = "";
     sendToAgent();
     render(); window.scrollTo(0, 0);
@@ -396,7 +398,7 @@
       ? "<li>Completed MyMaxicare application form</li><li>Principal: government-issued ID; birth certificate if single, single parent, widowed, annulled, divorced or separated; marriage certificate if married</li><li>Adult dependents: valid government ID with birthdate (parents); marriage certificate (spouse)</li><li>Minor dependents: birth certificate</li><li>Foreign applicants: ACR or SRRV</li>"
       : "<li>Completed MyMaxicare application form</li><li>Government-issued ID (birth certificate for minors)</li><li>Foreign applicants: ACR or SRRV</li>") + "</ul>";
     h += providersHtml(c);
-    return { subject: "Your MyMaxicare " + (fam ? "Family" : "Individual") + " proposal" + (c.name ? " – " + c.name : ""), proposal: h, total: fam ? totals : null, calc: calc, modes: c.modes, idx: idx, table: c.table, fam: fam };
+    return { subject: "Maxicare " + (fam ? "Family" : "Individual") + " Plan Proposal", proposal: h, total: fam ? totals : null, calc: calc, modes: c.modes, idx: idx, table: c.table, fam: fam };
   }
   function genericEmail(c) {
     var who = c.grp ? c.org : c.name;
@@ -427,7 +429,9 @@
   var KARLA_SIGNATURE = "<p>All the best,<br><b>Karla Luansing</b><br>Health Benefit Consultant (A465132)<br>Maxicare Healthcare Corporation<br>Maxicare Tower, 203 Salcedo Street,<br>Legazpi Village, Makati City, 1229<br><a href=\"tel:+639772176388\">+63(977)217-6388</a> (Viber/WhatsApp/Telegram)</p>" +
     "<p>Please consider the environment before you print this email</p>" +
     "<p>Disclaimer: The information contained in this communication is intended solely for the use of the individual or entity to whom it is addressed and others authorized to receive it. It may contain confidential or legally privileged information. If you are not the intended recipient you are hereby notified that any disclosure, copying, distribution, or taking any action in reliance on the contents of this information is strictly prohibited and may be unlawful. If you have erroneously received this communication, please notify us immediately by responding to this email and then delete it from your system. Maxicare is neither liable for the improper and incomplete transmission of the information contained in this communication nor for any delay in its receipt.</p>";
-  var MX_TEMPLATE = "<p>Hi Sir/Madam,</p><p>Good day!</p>" +
+  // Paolo, 2026-11-25: always greet the client by name instead of "Sir/Madam".
+  function mxTemplate(name) { return "<p>Hi " + e(name) + ",</p>" + MX_BODY; }
+  var MX_BODY = "<p>Good day!</p>" +
     "<p>For your perusal and consideration, I am pleased to present our proposal for an Individual or Family plan.</p>" +
     "<p>We offer several options with a Maximum Benefit Limit (MBL) of ₱100k, ₱150k, ₱200k, and ₱250k.</p>" +
     "<p>Please note that the MBL is applied per illness, per member, per year.<br>The final diagnosis from your doctor will determine the services charged against your MBL.<br>Any changes to your plan, such as upgrades or downgrades, can be made during your renewal period.</p>" +
@@ -440,7 +444,7 @@
     "<p>Should you have any questions or need clarifications, please feel free to contact me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
     "<p>I hope to hear from you soon and look forward to the opportunity to partner with you and your family as your trusted Health Benefits Solutions Partner.</p><p>Thank you.</p>" + KARLA_SIGNATURE;
   function emailTemplate(k, c, files) {
-    if (k === "mxi" || k === "mxf") return MX_TEMPLATE;
+    if (k === "mxi" || k === "mxf") return mxTemplate(c.name);
     var h = letterTop(c, c.name);
     h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
     if (files.length) h += "<p>I've attached:</p><ul>" + files.map(function (f) { return "<li>" + e(f.label) + "</li>"; }).join("") + "</ul>";
@@ -495,8 +499,8 @@
       add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + pl + "; nearest listed." : "No accredited hospital in " + pl + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
     } else if (o.co === "Maxicare") add("warn", "No location given, so no hospitals, clinics or doctors are listed.");
     if (o.kind !== "generic") {
-      var tOk = o.email === MX_TEMPLATE;
-      add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's Individual and Family template word for word, with her signature and disclaimer." : "Email doesn't match Karla's Individual and Family template.");
+      var tOk = o.email === mxTemplate(c.name);
+      add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's Individual and Family template word for word, greets " + c.name + " by name, and has her signature and disclaimer." : "Email doesn't match Karla's Individual and Family template.");
     } else {
       var gOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
       add(gOk ? "ok" : "fail", gOk ? "Email has the client's name, Karla's signature" + (o.files.length ? " and the list of attached files." : ".") : "Email is missing the client's name, the signature or the list of files.");
@@ -538,7 +542,7 @@
     // email template and proposal
     h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
     h += '<div class="z1-kv"><div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total[0].map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
-    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>') + '</div></div>';
+    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
     return h;
   }
   var MAIL_SERVER = "Microsoft 365";
@@ -576,11 +580,46 @@
   function saveFile(i) {
     var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
     var cl = window.claude;
-    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); })])
+    if (f.gen === "pdf") say("Making the proposal PDF…");
+    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), f.gen === "pdf" ? proposalPdf(G.out) : fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); })])
       .then(function (x) {
         if (!x[0]) { say("Saving files isn't available in this view"); return; }
         return x[0].save({ filename: f.name, data: x[1] }).then(function () { say(f.label + " saved"); }, function (err) { if (err && err.code !== "dismissed" && err.code !== "declined") say("The file wasn't saved"); });
       }, function () { say("That file isn't available right now"); });
+  }
+  /* ---------- the proposal as a PDF (Paolo, 2026-11-25) ---------- */
+  // Name: "Client Name_Client Age_MyMaxicare.pdf" (the principal's name and age for Family plans).
+  function pdfName(c) {
+    var n = String(c.name || "Client").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+    return n + "_" + c.people[0].age.y + "_MyMaxicare.pdf";
+  }
+  var PDF_LIB = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js", pdfLib = null;
+  function loadPdfLib() {
+    if (window.html2pdf) return Promise.resolve(window.html2pdf);
+    return pdfLib || (pdfLib = new Promise(function (ok, no) {
+      var sc = document.createElement("script"); sc.src = PDF_LIB; sc.async = true;
+      sc.onload = function () { window.html2pdf ? ok(window.html2pdf) : no(new Error("pdf")); };
+      sc.onerror = function () { pdfLib = null; no(new Error("pdf")); };
+      document.head.appendChild(sc);
+    }));
+  }
+  var PDF_CSS = ".pgp{font:11px/1.45 Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;box-sizing:border-box;padding:0}" +
+    ".pgp h1{font-size:20px;margin:0 0 6px;color:#0b4a8b}.pgp h2{font-size:14px;margin:14px 0 6px;color:#0b4a8b}.pgp h3{font-size:12px;margin:10px 0 4px}" +
+    ".pgp p{margin:0 0 7px}.pgp ul{margin:0 0 7px;padding-left:18px}.pgp a{color:#0b4a8b}" +
+    ".pgp table{border-collapse:collapse;margin:0 0 9px;width:100%;font-size:10.5px}.pgp tr{page-break-inside:avoid}" +
+    ".pgp th,.pgp td{border:1px solid #c9ced6;padding:4px 6px;text-align:left;vertical-align:top}.pgp th{background:#eef2f7}" +
+    ".pgp .pgp-head{display:flex;justify-content:space-between;border-bottom:2px solid #0b4a8b;padding-bottom:6px;margin-bottom:10px;font-size:10px;color:#444}";
+  function proposalPdf(o) {
+    return loadPdfLib().then(function (h2p) {
+      var box = document.createElement("div");
+      box.setAttribute("aria-hidden", "true");
+      box.style.cssText = "position:fixed;left:-10000px;top:0;";
+      box.innerHTML = "<style>" + PDF_CSS + "</style><div class=\"pgp\"><div class=\"pgp-head\"><b>Maxicare Healthcare Corporation</b><span>Karla Luansing, Health Benefit Consultant (A465132) · +63(977)217-6388</span></div>" + o.proposal + "</div>";
+      document.body.appendChild(box);
+      var opt = { margin: [12, 12, 14, 12], filename: o.files.filter(function (f) { return f.gen; })[0].name, image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }, pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "li", "p", "h2", "h3"] } };
+      return h2p().set(opt).from(box.querySelector(".pgp")).outputPdf("blob").then(function (b) { box.remove(); return b; }, function (err) { box.remove(); throw err; });
+    });
   }
   // After the draft is made, drop the client's details from the form; the email stays on screen until "Start a new proposal".
   function clearPersonal() { G.f = { region: G.f.region, prov: G.f.prov, city: G.f.city }; G.members = []; }
@@ -651,12 +690,10 @@
     catch (err) { G.err = err.message; render(); var el = document.querySelector("[data-pgform] .err"); if (el) el.scrollIntoView({ block: "center" }); }
   }, true);
 
-  /* ---------- hook into the page: Numbers > Proposal generator, right after Proposals ---------- */
+  /* ---------- hook into the page: Today > Proposal generator (moved from Numbers, Paolo 2026-11-25) ---------- */
   (function () {
-    var num = NAV.filter(function (g) { return g[0] === "Numbers"; })[0];
-    if (!num) return;
-    var at = num[1].length; num[1].forEach(function (it, i) { if (it[0] === "proposals") at = i + 1; });
-    num[1].splice(at, 0, ["propgen", "Proposal generator"]);
+    var grp = NAV.filter(function (g) { return g[0] === "Today"; })[0] || NAV.filter(function (g) { return g[0] === "Numbers"; })[0];
+    if (grp) grp[1].push(["propgen", "Proposal generator"]);
   })();
   VIEWS.propgen = vPropgen;
   var baseProposals = VIEWS.proposals;

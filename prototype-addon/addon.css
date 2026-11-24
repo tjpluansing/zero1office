@@ -46,3 +46,5 @@ body.z1-locked .wrap{visibility:hidden}
 .pg-mail table{border-collapse:collapse;margin:0 0 10px;font-size:12.5px;min-width:min(520px,100%)}
 .pg-mail th,.pg-mail td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
 .pg-mail th{background:var(--sunken)}
+/* Sidebar section headings (Today, Team, Numbers, Setup): centered, light band, Zero1Office blue (Paolo, 2026-11-25) */
+.grp{text-align:center;background:var(--brand-soft);color:var(--brand);border-radius:6px;padding:5px 8px;margin:8px 0 4px}
