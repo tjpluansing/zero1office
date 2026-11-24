@@ -404,21 +404,12 @@
   }
 
   /* ---------- files to attach, by product type (Paolo, 2026-11-24) ---------- */
-  var FILES = {
-    "Maxicare|Individual": [
-      ["files/mymaxicare-application-form-2026.pdf", "MyMaxicare_Application Form_2026.pdf", "Application form"],
-      ["files/mymaxicare-2026-brochure.pdf", "MyMaxicare_2026_Brochure.pdf", "MyMaxicare 2026 brochure"],
-      ["files/mymaxicare-individual-summary-proposal.pdf", "MyMaxicare_Individual_Summary_Proposal.pdf", "Individual plan summary"],
-      ["files/mymaxicare-supporting-documents.png", "MyMaxicare_Supporting Documents.png", "List of supporting documents"],
-    ],
-    "Maxicare|Family": [
-      ["files/mymaxicare-application-form-2026.pdf", "MyMaxicare_Application Form_2026.pdf", "Application form"],
-      ["files/mymaxicare-2026-brochure.pdf", "MyMaxicare_2026_Brochure.pdf", "MyMaxicare 2026 brochure"],
-      ["files/mymaxicare-family-summary-proposal.pdf", "MyMaxicare_Family_Summary_Proposal.pdf", "Family plan summary"],
-      ["files/mymaxicare-dependent-hierarchy.png", "MyMaxicare_Dependent Hierarchy.png", "Who can be enrolled as a dependent"],
-      ["files/mymaxicare-supporting-documents.png", "MyMaxicare_Supporting Documents.png", "List of supporting documents"],
-    ],
-  };
+  // Paolo, 2026-11-24: Individual and Family plans attach the primer with rates and the PCCs and other services guide.
+  var MX_FILES = [
+    ["files/mymaxicare-primer-with-rates.pdf", "MyMaxicare_Primer with Rates.pdf", "MyMaxicare primer with rates"],
+    ["files/maxicare-pccs-and-other-services.pdf", "Maxicare_PCCs_and_Other_Services.pdf", "Maxicare Primary Care Clinics and other services"],
+  ];
+  var FILES = { "Maxicare|Individual": MX_FILES, "Maxicare|Family": MX_FILES };
   function filesFor(co, type) { return (FILES[co + "|" + type] || []).map(function (f) { return { path: f[0], name: f[1], label: f[2] }; }); }
 
   /* ---------- email template, by product type ---------- */
