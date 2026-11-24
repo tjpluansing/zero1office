@@ -147,8 +147,8 @@
 
   /* ---------- state ---------- */
   var HIST_KEY = "zero1office-proposals:v1"; // company, type, date and status only: no client or member data is kept
-  var G = { co: "", type: "", f: {}, members: [], specs: ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY"], out: null, err: "", warn: [], sending: false, sure: false, sent: null, mailErr: "" };
-  function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.sure = false; G.sent = null; G.mailErr = ""; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
+  var G = { co: "", type: "", f: {}, members: [], specs: ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY"], out: null, err: "", warn: [], sending: false, draft: null, review: null, tab: "email", mailErr: "" };
+  function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.draft = null; G.review = null; G.tab = "email"; G.mailErr = ""; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
   function formKind() { if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
 
   /* ---------- view ---------- */
@@ -295,14 +295,18 @@
   }
   function finish(k, c) {
     var out = k === "generic" ? genericEmail(c) : maxicareEmail(k, c);
-    out.to = c.email; out.kind = k; out.co = G.co; out.type = G.type;
-    G.out = out; G.sure = false; G.sent = null; G.mailErr = "";
+    out.to = c.email; out.kind = k; out.co = G.co; out.type = G.type; out.c = c;
+    out.files = filesFor(G.co, G.type);
+    out.email = emailTemplate(k, c, out.files);
+    out.html = out.email + "<hr>" + out.proposal;
+    G.out = out; G.draft = null; G.mailErr = "";
+    sendToAgent();
     render(); window.scrollTo(0, 0);
   }
 
   /* email HTML: only tags Outlook keeps (headings, p, lists, tables, b, a, br) */
   function tbl(head, rows) {
-    return '<table border="1" cellpadding="6" cellspacing="0"><thead><tr>' + head.map(function (x) { return "<th>" + x + "</th>"; }).join("") + "</tr></thead><tbody>" +
+    return '<table><thead><tr>' + head.map(function (x) { return "<th>" + x + "</th>"; }).join("") + "</tr></thead><tbody>" +
       rows.map(function (r) { return "<tr>" + r.map(function (x) { return "<td>" + x + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>";
   }
   var MODE_NAME = ["Annual", "Semi-annual", "Quarterly (subject for approval)"];
@@ -354,16 +358,15 @@
   }
   function maxicareEmail(k, c) {
     var fam = k === "mxf", P = c.plans, idx = P.map(function (p) { return PLANS.indexOf(p); });
-    var h = letterTop(c, c.name);
-    h += "<p>Thank you for considering Maxicare. For over 37 years, Maxicare has provided comprehensive healthcare through a network of more than 56,000 accredited doctors and over 1,000 hospitals and clinics nationwide, with customer care open 24/7.</p>";
-    h += "<p>Here is your <b>MyMaxicare " + (fam ? "Family" : "Individual") + "</b> proposal" + (fam ? " for your family of " + c.people.length : "") + ", based on " + (fam ? "each member's" : "your") + " age today.</p>";
+    var h = "<h1>MyMaxicare " + (fam ? "Family" : "Individual") + " proposal</h1><p>Prepared for " + e(c.name) + (fam ? " and family (" + c.people.length + " members)" : "") + " on " + e(longDate(c.on)) + ". Fees are based on " + (fam ? "each member's" : "your") + " age today.</p>";
     h += "<h2>Plans</h2>" + tbl(["", ""].slice(0, 1).concat(P.map(function (p) { return p.n; })), [
       ["Maximum benefit limit (per illness, per year)"].concat(P.map(function (p) { return peso0(p.mbl); })),
       ["Room and board"].concat(P.map(function (p) { return p.room; })),
     ]);
     var totals = c.modes.map(function () { return idx.map(function () { return 0; }); });
-    var rows = [];
+    var rows = [], calc = [];
     c.people.forEach(function (m) {
+      calc.push({ name: m.name, y: m.age.y, b: bracketOf(m.age), fees: c.modes.map(function (mo) { return idx.map(function (pi) { return fee(c.table, bracketOf(m.age), pi, mo); }); }) });
       var b = bracketOf(m.age);
       c.modes.forEach(function (mo, mi) {
         rows.push([(mi === 0 ? "<b>" + e(m.name) + "</b><br>" + e(ageText(m.age)) + " (" + BRACKETS[b] + ")" : ""), MODE_NAME[mo]].concat(idx.map(function (pi, j) { var v = fee(c.table, b, pi, mo); totals[mi][j] += v; return peso0(v); })));
@@ -384,13 +387,11 @@
       ? "<li>Completed MyMaxicare application form</li><li>Principal: government-issued ID; birth certificate if single, single parent, widowed, annulled, divorced or separated; marriage certificate if married</li><li>Adult dependents: valid government ID with birthdate (parents); marriage certificate (spouse)</li><li>Minor dependents: birth certificate</li><li>Foreign applicants: ACR or SRRV</li>"
       : "<li>Completed MyMaxicare application form</li><li>Government-issued ID (birth certificate for minors)</li><li>Foreign applicants: ACR or SRRV</li>") + "</ul>";
     h += providersHtml(c);
-    h += "<p>When you're ready, just reply to this email with the plan and payment mode you like and I'll send the application form and guide you through enrollment.</p>" + signature();
-    return { subject: "Your MyMaxicare " + (fam ? "Family" : "Individual") + " proposal" + (c.name ? " – " + c.name : ""), html: h, total: fam ? totals[0] : null };
+    return { subject: "Your MyMaxicare " + (fam ? "Family" : "Individual") + " proposal" + (c.name ? " – " + c.name : ""), proposal: h, total: fam ? totals : null, calc: calc, modes: c.modes, idx: idx, table: c.table, fam: fam };
   }
   function genericEmail(c) {
     var who = c.grp ? c.org : c.name;
-    var h = letterTop(c, c.name);
-    h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Here is what we have noted so far:</p>";
+    var h = "<h1>" + e(G.co + " " + G.type) + " proposal request</h1><p>What we have noted so far" + (c.grp ? " for " + e(c.org) : "") + ":</p>";
     var rows = [];
     function add(l, v) { if (v != null && String(v).trim() !== "") rows.push(["<b>" + l + "</b>", e(v)]); }
     if (c.grp) { add("Company or group", c.org); add("Contact", c.name + (c.position ? ", " + c.position : "")); add("Industry", c.industry); add("Employees or members", c.heads); add("Dependents", c.deps); add("Average age", c.avgage); add("Current HMO", c.current); add("Current plan renews on", c.renewal ? longDate(c.renewal) : ""); }
@@ -399,73 +400,181 @@
     h += tbl(["Details", ""], rows);
     h += "<h2>Next steps</h2><ul><li>I'll prepare the " + e(G.co) + " plan options and rates that fit " + (c.grp ? "your group" : "you") + " and send them within 1 to 2 business days.</li><li>If anything above needs correcting, or you'd like to add " + (c.grp ? "your census (names, birthdates and gender)" : "the birthdates of everyone to be covered") + ", just reply to this email.</li></ul>";
     if (c.near) h += providersHtml(c);
-    h += signature();
-    return { subject: G.co + " " + G.type + " proposal for " + who, html: h };
+    return { subject: G.co + " " + G.type + " proposal for " + who, proposal: h };
   }
 
-  /* ---------- preview and send ---------- */
+  /* ---------- files to attach, by product type (Paolo, 2026-11-24) ---------- */
+  var FILES = {
+    "Maxicare|Individual": [
+      ["files/mymaxicare-application-form-2026.pdf", "MyMaxicare_Application Form_2026.pdf", "Application form"],
+      ["files/mymaxicare-2026-brochure.pdf", "MyMaxicare_2026_Brochure.pdf", "MyMaxicare 2026 brochure"],
+      ["files/mymaxicare-individual-summary-proposal.pdf", "MyMaxicare_Individual_Summary_Proposal.pdf", "Individual plan summary"],
+      ["files/mymaxicare-supporting-documents.png", "MyMaxicare_Supporting Documents.png", "List of supporting documents"],
+    ],
+    "Maxicare|Family": [
+      ["files/mymaxicare-application-form-2026.pdf", "MyMaxicare_Application Form_2026.pdf", "Application form"],
+      ["files/mymaxicare-2026-brochure.pdf", "MyMaxicare_2026_Brochure.pdf", "MyMaxicare 2026 brochure"],
+      ["files/mymaxicare-family-summary-proposal.pdf", "MyMaxicare_Family_Summary_Proposal.pdf", "Family plan summary"],
+      ["files/mymaxicare-dependent-hierarchy.png", "MyMaxicare_Dependent Hierarchy.png", "Who can be enrolled as a dependent"],
+      ["files/mymaxicare-supporting-documents.png", "MyMaxicare_Supporting Documents.png", "List of supporting documents"],
+    ],
+  };
+  function filesFor(co, type) { return (FILES[co + "|" + type] || []).map(function (f) { return { path: f[0], name: f[1], label: f[2] }; }); }
+
+  /* ---------- email template, by product type ---------- */
+  function emailTemplate(k, c, files) {
+    var h = letterTop(c, c.name);
+    if (k === "mxi" || k === "mxf") {
+      var fam = k === "mxf";
+      h += "<p>Thank you for considering Maxicare. For over 37 years, Maxicare has provided comprehensive healthcare through a network of more than 56,000 accredited doctors and over 1,000 hospitals and clinics nationwide, with customer care open 24/7.</p>" +
+        "<p>Below is your <b>MyMaxicare " + (fam ? "Family" : "Individual") + "</b> proposal" + (fam ? " for your family of " + c.people.length : "") + ", with the fees for all four plans, what is covered, and the accredited hospitals, clinics and doctors near " + e(title(c.loc.city)) + ".</p>";
+    } else {
+      h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
+    }
+    if (files.length) h += "<p>I've attached:</p><ul>" + files.map(function (f) { return "<li>" + e(f.label) + "</li>"; }).join("") + "</ul>";
+    if (k !== "generic") h += "<p>When you're ready, just reply with the plan and payment mode you like, fill in the application form, and I'll guide you through enrollment.</p>";
+    return h + signature();
+  }
+
+  /* ---------- checking by the right AI employee ---------- */
+  function agentFor(co) {
+    var team = (S.team || []).filter(function (x) { return x.d === "Proposals" && x.covers && (x.covers.co || []).indexOf(co) > -1 && (x.covers.prod || []).indexOf("HMO") > -1; });
+    team.sort(function (a, b) { return a.covers.co.length * a.covers.prod.length - b.covers.co.length * b.covers.prod.length; });
+    var a = team[0] || (S.team || []).filter(function (x) { return x.id === "maya"; })[0];
+    return a ? { id: a.id, n: a.n, r: a.r } : { id: "maya", n: "Maya", r: "Proposals Lead · HMO" };
+  }
+  var checkTimer = null;
+  function sendToAgent() {
+    var o = G.out; G.review = { agent: agentFor(o.co), status: "checking", checks: [] };
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(function () { if (G.out !== o) return; G.review.checks = runChecks(o); G.review.status = G.review.checks.some(function (x) { return x.s === "fail"; }) ? "returned" : "approved"; G.review.at = new Date().toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }); if (S.view === "propgen") render(); }, 1200);
+  }
+  // Each check recomputes from the source tables, not from the text of the proposal.
+  function runChecks(o) {
+    var out = [], c = o.c;
+    function add(s, t) { out.push({ s: s, t: t }); }
+    if (o.kind !== "generic") {
+      var bad = [];
+      o.calc.forEach(function (m) {
+        var want = bracketOf({ y: m.y });
+        if (m.b !== want) bad.push(m.name + ": wrong age bracket");
+        o.idx.forEach(function (pi, j) {
+          var r = RATES[o.table][want][pi], a = r[0];
+          o.modes.forEach(function (mo, mi) {
+            var expect = mo === 0 ? a : mo === 1 ? r[1] : Math.round(a * 0.28);
+            if (m.fees[mi][j] !== expect) bad.push(m.name + ", " + PLANS[pi].n + ", " + MODE_NAME[mo]);
+          });
+          if (Math.abs(Math.round(a * 0.54) - r[1]) > 1) bad.push(PLANS[pi].n + " semi-annual rate for " + BRACKETS[want] + " is not 54% of annual");
+        });
+      });
+      add(bad.length ? "fail" : "ok", bad.length ? "Fees don't match the 2026 MyMaxicare " + (o.fam ? "Family" : "Individual") + " rates: " + bad.slice(0, 3).join("; ") : "Fees match the 2026 MyMaxicare " + (o.fam ? "Family" : "Individual") + " rate table for every member's age bracket (" + o.calc.map(function (m) { return BRACKETS[m.b]; }).join(", ") + ").");
+      if (o.fam) {
+        var tOk = o.total.every(function (row, mi) { return row.every(function (v, j) { return v === o.calc.reduce(function (t, m) { return t + m.fees[mi][j]; }, 0); }); });
+        add(tOk ? "ok" : "fail", tOk ? "Family totals add up (" + o.calc.length + " members)." : "Family totals don't add up.");
+      }
+      add(o.calc.every(function (m) { return m.y >= 0 && m.y <= 60; }) ? "ok" : "fail", "Everyone is within the 15 days to 60 years age limit.");
+      if (o.calc.some(function (m) { return m.y < 18; }) && c.people[0].age.y < 18) add("warn", "The principal is a minor, so the application needs an appointed guardian.");
+      add(/subject for approval/i.test(o.proposal) ? "ok" : "fail", "Quarterly fees are marked subject for approval.");
+    } else {
+      add("warn", "This product doesn't have its own form or rates yet, so the email is a first reply and Karla follows up with rates.");
+    }
+    add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
+    if (c.near) {
+      var hosp = c.near.H.list.length, inCity = c.near.H.inCity;
+      add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + title(c.loc.city) + "; nearest listed." : "No accredited hospital in " + title(c.loc.city) + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
+    }
+    var tplOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla Junesha Luansing") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
+    add(tplOk ? "ok" : "fail", tplOk ? "Email template has the client's name, Karla's signature and the list of attached files." : "Email template is missing the client's name, the signature or the list of files.");
+    add(o.files.length ? "ok" : "warn", o.files.length ? o.files.length + " files to attach for " + o.co + " " + o.type + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." : "No files are set up for " + o.co + " " + o.type + " yet. Attach any files yourself in Outlook.");
+    return out;
+  }
+
+  /* ---------- preview, review and the Outlook draft ---------- */
   function preview() {
-    var o = G.out, sent = G.sent;
-    var h = '<div class="card pad stack"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><h3>4. Check the proposal, then email it</h3><span class="muted small">' + e(o.co + " " + o.type) + '</span></div>';
-    if (G.warn.length) h += '<div class="z1-box" role="status"><b class="small">For Karla to check (not in the email)</b>' + G.warn.map(function (w) { return '<p class="small" style="margin:0">⚠ ' + e(w) + '</p>'; }).join("") + '</div>';
-    h += '<div class="z1-kv">' + '<div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total.map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
-    h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
-    if (sent) h += '<div class="z1-box" role="status"><b>Sent to ' + e(o.to) + ' at ' + e(sent) + '.</b><span class="small muted">It is in your Outlook Sent Items.</span></div>';
+    var o = G.out, rv = G.review, dr = G.draft;
+    var h = '<div class="card pad stack"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><h3>4. Checking, files and sending</h3><span class="muted small">' + e(o.co + " " + o.type) + '</span></div>';
+    // review
+    var who = rv ? rv.agent : agentFor(o.co);
+    h += '<div class="z1-box"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>' + e(who.n) + '</b><span class="muted small">' + e(who.r) + '</span><span class="sp" style="flex:1"></span>' +
+      (rv.status === "checking" ? '<span class="s s-info">Checking the proposal and email…</span>' : rv.status === "approved" ? '<span class="s s-ok">Checked and approved' + (rv.at ? " at " + e(rv.at) : "") + '</span>' : '<span class="s s-need">Sent back for changes</span>') + '</div>';
+    if (rv.checks.length) h += '<ul style="margin:0;padding-left:18px;display:grid;gap:3px;font-size:12.5px">' + rv.checks.map(function (x) { return '<li>' + (x.s === "ok" ? "✓ " : x.s === "warn" ? "⚠ " : "✕ ") + e(x.t) + '</li>'; }).join("") + '</ul>';
+    if (G.warn.length) h += G.warn.map(function (w) { return '<p class="small" style="margin:0">⚠ ' + e(w) + ' (not in the email)</p>'; }).join("");
+    h += '</div>';
+    // files
+    if (rv.status === "approved") {
+      h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
+        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r"><button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button></td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + '</div>';
+      h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
+    }
+    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it, attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
-    h += '<div class="actions">' + (sent ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' :
-      '<button class="btn pri" data-pg="send"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Sending…" : G.sure ? "Click again to send to " + e(o.to) : "Email it to the client") + '</button><button class="btn" data-pg="edit">Edit the details</button>') +
-      '<button class="btn" data-pg="copy">Copy the email</button></div>';
-    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + o.html + '</div></div>';
+    h += '<div class="actions">' +
+      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
+      (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
+    // email template and proposal
+    h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
+    h += '<div class="z1-kv"><div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total[0].map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
+    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : o.email + '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>') + '</div></div>';
     return h;
   }
   var MAIL_SERVER = "Microsoft 365";
   function mailError(err) {
     var c = err && err.code;
-    if (c === "needs_reauth") return "Your Microsoft 365 sign-in has expired. Reconnect it in claude.ai Settings, Connectors, then click Email it again.";
-    if (c === "server_not_connected" || c === "selection_required") return "Microsoft 365 isn't connected for you. Add it in claude.ai Settings, Connectors, then click Email it again.";
-    if (c === "not_in_manifest" || c === "not_granted" || c === "consent_required") return "Sending email was turned off for this page. Allow Microsoft 365 in this page's permissions, then click Email it again.";
-    if (c === "approval_required") return "The send wasn't approved. Click Email it again and allow it when asked.";
-    if (c === "blocked_by_policy") return "Your organization's settings don't allow this page to send email.";
-    if (c === "rate_limited") return "Outlook is busy. Wait a minute, then click Email it again.";
-    return "The email didn't go out" + (err && err.message ? " (" + e(String(err.message).slice(0, 200)) + ")" : "") + ". Nothing was sent; you can try again or copy the email.";
+    if (c === "needs_reauth") return "Your Microsoft 365 sign-in has expired. Reconnect it in claude.ai Settings, Connectors, then try again.";
+    if (c === "server_not_connected" || c === "selection_required") return "Microsoft 365 isn't connected for you. Add it in claude.ai Settings, Connectors, then try again.";
+    if (c === "not_in_manifest" || c === "not_granted" || c === "consent_required") return "Outlook was turned off for this page. Allow Microsoft 365 in this page's permissions, then try again.";
+    if (c === "approval_required") return "Creating the draft wasn't approved. Try again and allow it when asked.";
+    if (c === "blocked_by_policy") return "Your organization's settings don't allow this page to use Outlook.";
+    if (c === "rate_limited") return "Outlook is busy. Wait a minute, then try again.";
+    return "The draft wasn't created" + (err && err.message ? " (" + e(String(err.message).slice(0, 200)) + ")" : "") + ". You can try again or copy the email.";
   }
-  function send() {
-    var o = G.out; if (!o || G.sending || G.sent) return;
+  function makeDraft() {
+    var o = G.out; if (!o || G.sending || G.draft || !G.review || G.review.status !== "approved") return;
     var cc = (G.f.cc || "").trim();
     if (cc && !EMAIL_RE.test(cc)) { G.mailErr = "The CC address doesn't look right."; render(); return; }
-    if (!G.sure) { G.sure = true; G.mailErr = ""; render(); return; }
     G.sending = true; G.mailErr = ""; render();
     var input = { to: [o.to], subject: o.subject, body: o.html, bodyType: "html" };
     if (cc) input.cc = [cc];
     var cl = window.claude;
     (cl && cl.use ? cl.use("mcp") : Promise.resolve(null)).then(function (mcp) {
       if (!mcp) throw { code: "unavailable_here" };
-      return mcp.callTool(MAIL_SERVER, "outlook_send_mail", input);
-    }).then(function () {
-      G.sending = false; G.sure = false; G.sent = new Date().toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
-      log("sent"); clearPersonal(); say("Proposal emailed to " + o.to); render();
+      return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input);
+    }).then(function (res) {
+      var p = (res && res.payload) || {}, link = p.webLink || p.weblink || p.web_link || "";
+      G.sending = false; G.draft = { link: /^https:\/\//.test(link) ? link : "" };
+      log("draft"); clearPersonal(); say("Draft ready in Outlook"); render();
     }, function (err) {
-      G.sending = false; G.sure = false;
-      G.mailErr = err && err.code === "unavailable_here" ? "Email can't be sent from this view. Open Zero1Office on claude.ai with Microsoft 365 connected, or copy the email and send it yourself." : mailError(err);
+      G.sending = false;
+      G.mailErr = err && err.code === "unavailable_here" ? "Outlook can't be reached from this view. Open Zero1Office on claude.ai with Microsoft 365 connected, or copy the email." : mailError(err);
       render();
     });
   }
-  // After sending, drop the client's details from memory; the sent email stays on screen until "Start a new proposal".
+  function saveFile(i) {
+    var f = G.out && G.out.files[i]; if (!f) return;
+    var cl = window.claude;
+    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); })])
+      .then(function (x) {
+        if (!x[0]) { say("Saving files isn't available in this view"); return; }
+        return x[0].save({ filename: f.name, data: x[1] }).then(function () { say(f.label + " saved"); }, function (err) { if (err && err.code !== "dismissed" && err.code !== "declined") say("The file wasn't saved"); });
+      }, function () { say("That file isn't available right now"); });
+  }
+  // After the draft is made, drop the client's details from the form; the email stays on screen until "Start a new proposal".
   function clearPersonal() { G.f = { region: G.f.region, prov: G.f.prov, city: G.f.city }; G.members = []; }
   function log(status) {
     var h = store(HIST_KEY) || [];
-    h.unshift({ at: new Date().toISOString(), co: G.out.co, type: G.out.type, status: status });
+    h.unshift({ at: new Date().toISOString(), co: G.out.co, type: G.out.type, status: status, by: G.review ? G.review.agent.n : "" });
     store(HIST_KEY, h.slice(0, 50));
   }
   function history() {
     var h = store(HIST_KEY) || []; if (!h.length) return "";
-    return '<div class="card pad stack"><h3>Sent from this browser</h3><table class="t"><thead><tr><th>When</th><th>Company</th><th>Type</th></tr></thead><tbody>' +
-      h.slice(0, 10).map(function (x) { return '<tr><td>' + e(new Date(x.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + '</td><td>' + e(x.co) + '</td><td>' + e(x.type) + '</td></tr>'; }).join("") +
-      '</tbody></table><p class="muted small" style="margin:0">Client names and emails aren\'t kept here; they are in your Outlook Sent Items.</p></div>';
+    return '<div class="card pad stack"><h3>Proposals from this browser</h3><table class="t"><thead><tr><th>When</th><th>Company</th><th>Type</th><th>Checked by</th><th>Status</th></tr></thead><tbody>' +
+      h.slice(0, 10).map(function (x) { return '<tr><td>' + e(new Date(x.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + '</td><td>' + e(x.co) + '</td><td>' + e(x.type) + '</td><td>' + e(x.by || "—") + '</td><td>' + (x.status === "draft" ? "Draft in Outlook" : "Sent") + '</td></tr>'; }).join("") +
+      '</tbody></table><p class="muted small" style="margin:0">Client names and emails aren\'t kept here; they are in Outlook.</p></div>';
   }
   function copyMail() {
-    var el = document.getElementById("pgMail"); if (!el) return;
-    var text = "To: " + G.out.to + "\nSubject: " + G.out.subject + "\n\n" + el.innerText;
+    if (!G.out) return;
+    var el = document.createElement("div"); el.innerHTML = G.out.html;
+    var text = "To: " + G.out.to + "\nSubject: " + G.out.subject + "\n\n" + (el.innerText || el.textContent);
     try {
       if (window.ClipboardItem && navigator.clipboard.write) navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([G.out.html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]).then(function () { say("Email copied"); }, function () { navigator.clipboard.writeText(text).then(function () { say("Email copied"); }, function () { say("Select the text and copy it"); }); });
       else navigator.clipboard.writeText(text).then(function () { say("Email copied"); }, function () { say("Select the text and copy it"); });
@@ -483,9 +592,11 @@
     else if (a === "addm") G.members.push({ name: "", age: "" });
     else if (a === "delm") G.members.splice(Number(v), 1);
     else if (a === "clear") { reset(true); }
-    else if (a === "edit") { G.out = null; G.sure = false; G.mailErr = ""; }
+    else if (a === "edit") { G.out = null; G.review = null; G.draft = null; G.mailErr = ""; }
     else if (a === "new") { reset(true); }
-    else if (a === "send") { send(); return; }
+    else if (a === "draft") { makeDraft(); return; }
+    else if (a === "save") { saveFile(Number(v)); return; }
+    else if (a === "pgtab") { G.tab = v; }
     else if (a === "copy") { copyMail(); return; }
     render();
     if (a === "type" || a === "co") { var f = document.querySelector("[data-pgform] input"); if (f && a === "type") f.focus(); }
@@ -495,7 +606,6 @@
     var k = t.getAttribute("data-pgf"), m = t.getAttribute("data-pgm");
     if (k) G.f[k] = t.type === "checkbox" ? t.checked : t.value;
     if (m) G.members[Number(t.getAttribute("data-i"))][m] = t.value;
-    if (k === "cc" && G.sure) { G.sure = false; var b = document.querySelector('[data-pg="send"]'); if (b) b.textContent = "Email it to the client"; }
   }, true);
   app.addEventListener("change", function (ev) {
     var t = ev.target; if (!t.getAttribute) return;

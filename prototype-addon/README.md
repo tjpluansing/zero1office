@@ -10,3 +10,11 @@ This folder holds what is added on top of it, appended after the page's own scri
 
 Build: `prototype-addon/build.sh <original page source> <out.html>`. The output starts with the
 original page byte for byte; check that before publishing.
+
+## Proposal generator files
+
+`propgen.js` adds Numbers > Proposal generator. When a proposal is generated, the assigned Proposals agent checks it (fees recomputed from the rate tables, family totals, ages, client email, nearby providers, email template, files for the product). Once it is approved, the page creates an Outlook draft. The Microsoft 365 connector can't attach files, so the user saves the product files from the page and attaches them in Outlook before sending.
+
+Publish these with the page under `files/` (source: the uploaded Maxicare files; the brochure is converted from .docx to PDF):
+`mymaxicare-application-form-2026.pdf`, `mymaxicare-2026-brochure.pdf`, `mymaxicare-individual-summary-proposal.pdf`, `mymaxicare-family-summary-proposal.pdf`, `mymaxicare-dependent-hierarchy.png`, `mymaxicare-supporting-documents.png`.
+Also publish `data/providers.json` and `data/doctors.json` at the page root. Capabilities: `{mcp: {servers: [{server: "Microsoft 365", tools: ["outlook_create_draft"]}]}, downloads: true}`.
