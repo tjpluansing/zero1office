@@ -16,6 +16,7 @@ import {
 import BillingPage from "./pages/Billing";
 import ClientsPage from "./pages/Clients";
 import OfficePage from "./pages/Office";
+import PreviewPage from "./pages/Preview";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
             <Route element={<Layout />}>
               <Route index element={<HomeRedirect />} />
               <Route path="office" element={<RequirePermission permission="dashboard.view"><OfficePage /></RequirePermission>} />
+              <Route path="preview" element={<RequirePermission permission="dashboard.view"><PreviewPage /></RequirePermission>} />
               <Route path="dashboard" element={<RequirePermission permission="dashboard.view"><DashboardPage /></RequirePermission>} />
               <Route path="clients" element={<RequirePermission permission="clients.view"><ClientsPage /></RequirePermission>} />
               <Route path="quotes" element={<RequirePermission permission="quotes.view">
