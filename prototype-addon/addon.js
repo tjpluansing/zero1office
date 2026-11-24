@@ -602,6 +602,16 @@
 
   /* ---------- Leads and Leads finder as one page with two tabs (Paolo, 2026-11-24) ---------- */
   NAV.forEach(function (g) { g[1] = g[1].filter(function (it) { return it[0] !== "finder"; }); });
+  // Email campaigns and Outreach inboxes sit under Numbers, right after Leads (Paolo, 2026-11-24).
+  (function () {
+    var moved = [];
+    NAV.forEach(function (g) { g[1] = g[1].filter(function (it) { if (it[0] === "campaigns" || it[0] === "outreach") { moved.push(it); return false; } return true; }); });
+    var num = NAV.filter(function (g) { return g[0] === "Numbers"; })[0];
+    if (!num) return;
+    var at = 0; num[1].forEach(function (it, i) { if (it[0] === "leads") at = i + 1; });
+    moved.sort(function (a) { return a[0] === "campaigns" ? -1 : 1; });
+    num[1].splice.apply(num[1], [at || num[1].length, 0].concat(moved));
+  })();
   function leadTabs(html, on) {
     var tabs = '<div class="chips"><button class="chip" data-go="leads" aria-pressed="' + (on === "leads") + '">List</button>' +
       '<button class="chip" data-go="finder" aria-pressed="' + (on === "finder") + '">How it\'s going</button></div>';
