@@ -326,9 +326,7 @@
       (c.note ? "<p>" + e(c.note).replace(/\n/g, "<br>") + "</p>" : "");
   }
   function signature() {
-    return "<p>Should you have questions, please feel free to call me at 0977-217-6388 or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
-      "<p>I hope to hear from you soon and look forward to being your trusted health benefits partner.</p>" +
-      "<p>Respectfully yours,<br><br><b>Karla Junesha Luansing</b><br>Health Benefit Consultant, A465132<br>Ask Karla</p>";
+    return "<p>Should you have any questions or need clarifications, please feel free to contact me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p><p>Thank you.</p>" + KARLA_SIGNATURE;
   }
   function providersHtml(c) {
     var n = c.near; if (!n) return "";
@@ -425,17 +423,27 @@
   function filesFor(co, type) { return (FILES[co + "|" + type] || []).map(function (f) { return { path: f[0], name: f[1], label: f[2] }; }); }
 
   /* ---------- email template, by product type ---------- */
+  // Karla's email template for Maxicare Individual and Family, word for word as Paolo sent it (2026-11-24).
+  var KARLA_SIGNATURE = "<p>All the best,<br><b>Karla Luansing</b><br>Health Benefit Consultant (A465132)<br>Maxicare Healthcare Corporation<br>Maxicare Tower, 203 Salcedo Street,<br>Legazpi Village, Makati City, 1229<br><a href=\"tel:+639772176388\">+63(977)217-6388</a> (Viber/WhatsApp/Telegram)</p>" +
+    "<p>Please consider the environment before you print this email</p>" +
+    "<p>Disclaimer: The information contained in this communication is intended solely for the use of the individual or entity to whom it is addressed and others authorized to receive it. It may contain confidential or legally privileged information. If you are not the intended recipient you are hereby notified that any disclosure, copying, distribution, or taking any action in reliance on the contents of this information is strictly prohibited and may be unlawful. If you have erroneously received this communication, please notify us immediately by responding to this email and then delete it from your system. Maxicare is neither liable for the improper and incomplete transmission of the information contained in this communication nor for any delay in its receipt.</p>";
+  var MX_TEMPLATE = "<p>Hi Sir/Madam,</p><p>Good day!</p>" +
+    "<p>For your perusal and consideration, I am pleased to present our proposal for an Individual or Family plan.</p>" +
+    "<p>We offer several options with a Maximum Benefit Limit (MBL) of ₱100k, ₱150k, ₱200k, and ₱250k.</p>" +
+    "<p>Please note that the MBL is applied per illness, per member, per year.<br>The final diagnosis from your doctor will determine the services charged against your MBL.<br>Any changes to your plan, such as upgrades or downgrades, can be made during your renewal period.</p>" +
+    "<p><b>Coverage for Pre-existing Conditions (PEC)</b><br>First Year of Membership: Pre-existing conditions are covered, but with certain limitations depending on the plan you choose.<br>Second Year Onward: Coverage will depend on whether the PEC is considered a dreaded or non-dreaded condition.</p>" +
+    "<ul><li><b>Dreaded Conditions:</b> These are severe or long-term illnesses that may not have a cure, such as cancer, chronic kidney disease (CKD), arthritis, or slipped disc. For these conditions, the coverage limitations from the first year will remain the same for the rest of your membership.</li>" +
+    "<li><b>Non-dreaded Conditions:</b> These are mild and curable illnesses like migraines, uncomplicated hypertension, or uncomplicated urinary tract infections (UTIs). For these conditions, coverage will be up to your plan's MBL.</li></ul>" +
+    "<p><b>Additional Benefits</b><br>As a Maxicare member, you can enjoy free and unlimited consultations and laboratory procedures exclusively at Maxicare Primary Care Clinics (PCCs).<br>These services availed at our PCCs will not be deducted from your MBL.</p>" +
+    "<p>You may visit the Maxicare website for the following:<br>Accredited Provider Hospitals/Clinics and Doctors: <a href=\"https://www.maxicare.com.ph/#care-center\">https://www.maxicare.com.ph/#care-center</a><br>Maxicare Primary Care Network (PCN): <a href=\"https://www.maxicare.com.ph/services/visit-locations\">https://www.maxicare.com.ph/services/visit-locations</a></p>" +
+    "<p>I'd be happy to discuss our products and programs in greater detail at your most convenient time.<br>When would be a good time to schedule the meeting, this week or next week?</p>" +
+    "<p>Should you have any questions or need clarifications, please feel free to contact me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
+    "<p>I hope to hear from you soon and look forward to the opportunity to partner with you and your family as your trusted Health Benefits Solutions Partner.</p><p>Thank you.</p>" + KARLA_SIGNATURE;
   function emailTemplate(k, c, files) {
+    if (k === "mxi" || k === "mxf") return MX_TEMPLATE;
     var h = letterTop(c, c.name);
-    if (k === "mxi" || k === "mxf") {
-      var fam = k === "mxf";
-      h += "<p>Thank you for considering Maxicare. For over 37 years, Maxicare has provided comprehensive healthcare through a network of more than 56,000 accredited doctors and over 1,000 hospitals and clinics nationwide, with customer care open 24/7.</p>" +
-        "<p>Below is your <b>MyMaxicare " + (fam ? "Family" : "Individual") + "</b> proposal" + (fam ? " for your family of " + c.people.length : "") + ", with the fees for all four plans" + (c.near ? ", what is covered, and the accredited hospitals, clinics and doctors near " + e(placeName(c.loc)) : " and what is covered") + ".</p>";
-    } else {
-      h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
-    }
+    h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
     if (files.length) h += "<p>I've attached:</p><ul>" + files.map(function (f) { return "<li>" + e(f.label) + "</li>"; }).join("") + "</ul>";
-    if (k !== "generic") h += "<p>When you're ready, just reply with the plan and payment mode you like, fill in the application form, and I'll guide you through enrollment.</p>";
     return h + signature();
   }
 
@@ -486,8 +494,13 @@
       var hosp = c.near.H.list.length, inCity = c.near.H.inCity, pl = placeName(c.loc);
       add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + pl + "; nearest listed." : "No accredited hospital in " + pl + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
     } else if (o.co === "Maxicare") add("warn", "No location given, so no hospitals, clinics or doctors are listed.");
-    var tplOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla Junesha Luansing") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
-    add(tplOk ? "ok" : "fail", tplOk ? "Email template has the client's name, Karla's signature and the list of attached files." : "Email template is missing the client's name, the signature or the list of files.");
+    if (o.kind !== "generic") {
+      var tOk = o.email === MX_TEMPLATE;
+      add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's Individual and Family template word for word, with her signature and disclaimer." : "Email doesn't match Karla's Individual and Family template.");
+    } else {
+      var gOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
+      add(gOk ? "ok" : "fail", gOk ? "Email has the client's name, Karla's signature" + (o.files.length ? " and the list of attached files." : ".") : "Email is missing the client's name, the signature or the list of files.");
+    }
     add(o.files.length ? "ok" : "warn", o.files.length ? o.files.length + " files to attach for " + o.co + " " + o.type + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." : "No files are set up for " + o.co + " " + o.type + " yet. Attach any files yourself in Outlook.");
     return out;
   }
