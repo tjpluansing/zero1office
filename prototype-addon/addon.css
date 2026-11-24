@@ -38,3 +38,11 @@ body.z1-locked .wrap{visibility:hidden}
 .z1-pre{white-space:pre-wrap;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;margin:0;max-height:220px;overflow:auto}
 .z1-check{display:flex;gap:8px;align-items:center;font-size:12.5px;font-weight:500}
 @media (max-width:760px){.z1-three{grid-template-columns:minmax(0,1fr)}}
+.pg-mail{font-size:13px;line-height:1.5;overflow:auto}
+.pg-mail h2{font-size:16px;margin:14px 0 6px}
+.pg-mail h3{font-size:14px;margin:12px 0 4px}
+.pg-mail p{margin:0 0 8px}
+.pg-mail ul{margin:0 0 8px;padding-left:20px}
+.pg-mail table{border-collapse:collapse;margin:0 0 10px;font-size:12.5px;min-width:min(520px,100%)}
+.pg-mail th,.pg-mail td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+.pg-mail th{background:var(--sunken)}
