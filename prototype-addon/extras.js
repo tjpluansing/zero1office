@@ -169,6 +169,56 @@
     save(); closeModals(); render(); say("Event updated.");
   }, true);
 
+  /* ---------- Reports > Ads (Paolo, 2026-11-25): paid ads run by Mateo, sample numbers ---------- */
+  var ADS = {
+    platforms: [["Facebook & Instagram", 26400, 412000, 6950, 131, 3, "#1E5190"], ["Google Search", 15800, 58000, 2430, 66, 2, "#D3A13B"], ["TikTok", 6300, 188000, 3010, 17, 0, "#10B981"]],
+    // name, platform, status, spend, clicks, leads, won
+    campaigns: [
+      ["Free Financial Wellness webinar", "Facebook & Instagram", "Active", 11200, 3180, 74, 1],
+      ["MyMaxicare Individual & Family plans", "Facebook & Instagram", "Active", 9800, 2470, 41, 2],
+      ["HMO for small businesses (SME)", "Google Search", "Active", 10400, 1520, 39, 2],
+      ["Maxicare plans near me", "Google Search", "Active", 5400, 910, 27, 0],
+      ["Retargeting: site visitors", "Facebook & Instagram", "Paused", 5400, 1300, 16, 0],
+      ["60-second HMO explainer reels", "TikTok", "Waiting for your OK", 6300, 3010, 17, 0],
+    ],
+    months: [["Jun", 31000, 118], ["Jul", 34500, 141], ["Aug", 36800, 150], ["Sep", 41200, 176], ["Oct", 44900, 198], ["Nov", 48500, 214]],
+    premiumWon: 486000, calls: 19,
+  };
+  function vAds() {
+    var m = byId("mateo"), P = ADS.platforms, C = ADS.campaigns;
+    var spend = P.reduce(function (a, x) { return a + x[1]; }, 0), leads = P.reduce(function (a, x) { return a + x[4]; }, 0), won = P.reduce(function (a, x) { return a + x[5]; }, 0);
+    var reach = P.reduce(function (a, x) { return a + x[2]; }, 0), clicks = P.reduce(function (a, x) { return a + x[3]; }, 0);
+    var php = function (n) { return "₱" + Math.round(n).toLocaleString("en-PH"); };
+    var h = '<div class="card pad" style="display:flex;gap:10px;align-items:center;margin-bottom:12px">' + (m ? av(m) : "") + "<div><h3>Paid ads · last 30 days</h3><div class=\"muted small\">" + (m ? e(m.n) + " runs the ads; every new ad and budget change waits for your OK." : "Every new ad and budget change waits for your OK.") + " Sample numbers until your ad accounts are connected.</div></div></div>";
+    h += '<div class="tiles"><div class="tile"><span class="k">Ad spend</span><span class="v">' + peso(spend) + '</span><span class="h">' + php(spend / 30) + ' a day</span></div><div class="tile"><span class="k">People reached</span><span class="v">' + Math.round(reach / 1000) + 'K</span><span class="h">' + clicks.toLocaleString() + " clicks · " + (clicks / reach * 100).toFixed(1) + '% click rate</span></div><div class="tile"><span class="k">Leads</span><span class="v">' + leads + '</span><span class="h">' + php(spend / leads) + ' per lead</span></div><div class="tile"><span class="k">Calls booked</span><span class="v">' + ADS.calls + '</span><span class="h">' + Math.round(ADS.calls / leads * 100) + '% of ad leads</span></div><div class="tile"><span class="k">Clients won</span><span class="v">' + won + '</span><span class="h">' + peso(ADS.premiumWon) + " premium · " + (ADS.premiumWon / spend).toFixed(1) + "× spend</span></div></div>";
+    var maxS = Math.max.apply(null, P.map(function (x) { return x[1]; }));
+    h += '<div class="grid2" style="margin-bottom:12px"><div class="card pad stack"><h3>By platform</h3>' + P.map(function (x) {
+      return '<div style="display:grid;gap:4px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span><i class="exdot" style="background:' + x[6] + '"></i><b>' + e(x[0]) + '</b></span><span class="muted num">' + peso(x[1]) + " · " + x[4] + " leads · " + php(x[1] / x[4]) + ' each</span></div><div class="bar" style="height:10px"><i style="width:' + Math.round(x[1] / maxS * 100) + "%;background:" + x[6] + '"></i></div></div>';
+    }).join("") + '<p class="muted small" style="margin:0">Google Search brings the fewest leads but the cheapest clients; TikTok reaches the most people per peso but hasn\'t produced a client yet.</p></div>';
+    var mx = Math.max.apply(null, ADS.months.map(function (x) { return x[1]; }));
+    h += '<div class="card pad"><h3>Spend and leads by month</h3><div style="display:flex;align-items:flex-end;gap:10px;height:170px;margin-top:12px">' + ADS.months.map(function (x, i) {
+      return '<div style="flex:1;display:grid;justify-items:center;gap:4px;align-self:stretch;align-content:end"><span class="num small"><b>' + x[2] + '</b> leads</span><div style="width:100%;max-width:56px;height:' + Math.round(x[1] / mx * 110) + "px;background:" + (i === ADS.months.length - 1 ? "#D3A13B" : "#1E5190") + ';border-radius:6px 6px 0 0" title="' + php(x[1]) + '"></div><span class="muted small">' + x[0] + " · " + peso(x[1]) + "</span></div>";
+    }).join("") + "</div></div></div>";
+    var stCls = { "Active": "s-ok", "Paused": "s-off", "Waiting for your OK": "s-need" };
+    h += '<div class="card pad stack" style="margin-bottom:12px"><h3>Campaigns</h3><div class="tblwrap"><table class="t" style="min-width:760px"><tr><th>Campaign</th><th>Platform</th><th>Status</th><th class="r">Spend</th><th class="r">Clicks</th><th class="r">Leads</th><th class="r">Cost per lead</th><th class="r">Won</th></tr>' + C.map(function (x) {
+      return "<tr><td><b>" + e(x[0]) + "</b></td><td>" + e(x[1]) + '</td><td><span class="s ' + stCls[x[2]] + '">' + e(x[2]) + '</span></td><td class="r num">' + php(x[3]) + '</td><td class="r num">' + x[4].toLocaleString() + '</td><td class="r num">' + x[5] + '</td><td class="r num">' + php(x[3] / x[5]) + '</td><td class="r num">' + x[6] + "</td></tr>";
+    }).join("") + "</table></div></div>";
+    h += '<div class="card pad" style="background:var(--gold-soft);border-color:transparent;display:grid;gap:6px"><b>' + (m ? e(m.n) + "'s" : "Ad") + ' suggestions</b><ul class="small" style="margin:0;padding-left:18px;display:grid;gap:4px"><li>Move ₱3,000 from Retargeting (paused, ₱338 a lead) to the SME search ads, which won 2 clients this month.</li><li>The webinar ad brings the most leads at ₱151 each; keep it running through the next webinar date.</li><li>Approve or decline the TikTok explainer reels in Content approvals; they\'re reaching people cheaply but need your OK to keep spending.</li></ul><p class="muted" style="font-size:11px;margin:0">Nothing changes in your ad accounts from this page.</p></div>';
+    return h;
+  }
+  var vReports0 = VIEWS.reports;
+  if (vReports0) VIEWS.reports = function () {
+    var ads = S.reportTab === "ads", keep = S.reportTab;
+    if (ads) S.reportTab = "written";
+    var h = vReports0.apply(this, arguments);
+    if (ads) S.reportTab = keep;
+    var chip = '<button class="chip" data-act="rtab" data-v="ads" aria-pressed="' + ads + '">Ads</button>';
+    var at = h.indexOf('<button class="chip" data-act="rtab" data-v="revenue"');
+    h = at > -1 ? h.slice(0, at) + chip + h.slice(at) : h.replace('<div class="chips">', '<div class="chips">' + chip);
+    if (ads) { h = h.replace('aria-pressed="true">Written reports', 'aria-pressed="false">Written reports'); var c = h.indexOf("</div>", h.indexOf('<div class="chips">')); h = h.slice(0, c + 6) + vAds(); }
+    return h;
+  };
+
   /* ---------- clicks and typing ---------- */
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest && ev.target.closest("[data-ex],[data-act]"); if (!t) return;
@@ -204,5 +254,5 @@
     ev.preventDefault(); ev.stopPropagation(); submitFlow();
   }, true);
 
-  if (S.view === "clients" || S.view === "workflows" || S.view === "calendar") render();
+  if (["clients", "workflows", "calendar", "reports"].indexOf(S.view) > -1) render();
 })();
