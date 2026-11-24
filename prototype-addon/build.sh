@@ -9,4 +9,5 @@ cp "$1" "$2"
   printf '<script type="text/plain" id="z1LiveSrc">\n'; cat "$D/../public/office/live.js"; printf '</script>\n'
   printf '<script>\n'; cat "$D/addon.js"; printf '</script>\n'
   printf '<script>\n'; cat "$D/propgen.js"; printf '</script>\n'
+  printf '<script>\n'; cat "$D/extras.js"; printf '</script>\n'
 } >> "$2"

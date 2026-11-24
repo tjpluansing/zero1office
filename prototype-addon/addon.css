@@ -48,3 +48,27 @@ body.z1-locked .wrap{visibility:hidden}
 .pg-mail th{background:var(--sunken)}
 /* Sidebar section headings (Today, Team, Numbers, Setup): centered, light band, Zero1Office blue (Paolo, 2026-11-25) */
 .grp{text-align:center;background:var(--brand-soft);color:var(--brand);border-radius:6px;padding:5px 8px;margin:8px 0 4px}
+/* Client stats periods (Paolo, 2026-11-25) */
+.exper{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:10px;margin-bottom:12px}
+.expc{display:grid;gap:2px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:14px 16px;cursor:pointer;color:var(--ink);font:inherit;position:relative;overflow:hidden}
+.expc:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--line)}
+.expc:hover{border-color:var(--brand)}
+.expc.on{background:var(--brand-soft);border-color:var(--brand)}
+.expc.on:before{background:var(--brand)}
+.expc .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+.expc.on .k{color:var(--brand)}
+.expc .v{font:800 24px var(--display);color:var(--brand)}
+.expc .h{font-size:12px;color:var(--muted)}
+.exbar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--sunken)}
+.exbar i{display:block;height:100%}
+.exdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.exren{display:grid;gap:8px}
+.exrb{display:grid;grid-template-columns:minmax(90px,130px) 1fr minmax(120px,auto);gap:10px;align-items:center;font-size:12.5px}
+.exrb .b{height:12px;background:var(--sunken);border-radius:999px;overflow:hidden}
+.exrb .b i{display:block;height:100%;background:var(--gold);border-radius:999px}
+.exrb .n{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.exrb .n b{color:var(--ink)}
+/* Workflow editor */
+.exstep{display:grid;grid-template-columns:20px minmax(140px,220px) 1fr auto;gap:8px;align-items:center}
+.exbtns{display:flex;gap:4px}
+@media (max-width:640px){.exstep{grid-template-columns:20px 1fr}.exstep input,.exstep .exbtns{grid-column:2}.exrb{grid-template-columns:1fr}.exrb .n{text-align:left}}
