@@ -35,6 +35,14 @@ insert into auth.users (id, email, encrypted_password, raw_app_meta_data) values
   '{"z1_role":"assistant","z1_full_name":"Assistant"}'),
  ('00000000-0000-0000-0000-00000000000d', 'stranger@ask-karla.com', null, '{}');
 
+-- Karla and the assistant have already accepted the agreement and every
+-- session below is MFA-verified unless a test says otherwise.
+select set_config('app.trusted', 'on', false);
+update profiles set policy_accepted_version = '2026-11-24', policy_accepted_at = now()
+ where email in ('karla@ask-karla.com', 'assistant@ask-karla.com');
+select set_config('app.trusted', '', false);
+set request.jwt.claims = '{"aal":"aal2"}';
+
 insert into public.clients (full_name, insurer) values ('Juan Dela Cruz', 'Maxicare'), ('Ana Reyes', 'FWD');
 
 select pg_temp.check((select status = 'pending' and role_id = 'no_access' from profiles
@@ -52,8 +60,24 @@ reset role;  -- GoTrue updates the hash
 update auth.users set encrypted_password = 'hash-new' where email = 'paolo@ask-karla.com';
 set role authenticated;
 select complete_password_change();
+select pg_temp.check((select jsonb_array_length(my_access()->'permissions') = 0
+  and my_access()->>'policy_required' = '2026-11-24'), 'still no access until the agreement is accepted');
+select pg_temp.expect_error($$update profiles set policy_accepted_version = '2026-11-24' where id = auth.uid()$$,
+  'permission denied');
+select pg_temp.expect_error($$select accept_policy('2020-01-01')$$, 'out of date');
+select accept_policy('2026-11-24');
 select pg_temp.check((select jsonb_array_length(my_access()->'permissions') = (select count(*) from permissions)),
-  'after password change the Super Admin has every permission');
+  'after password change and agreement the Super Admin has every permission');
+
+-- ---------- MFA for sensitive permissions ----------
+set request.jwt.claims = '{"aal":"aal1"}';
+select pg_temp.check(not has_permission('admin_users.view') and not has_permission('clients.export')
+  and has_permission('clients.view'), 'without MFA: admin and export locked, normal pages open');
+select pg_temp.check((select jsonb_array_length(my_access()->'mfa_locked') > 0), 'my_access lists what MFA unlocks');
+select pg_temp.check((select count(*) = 1 from profiles), 'without MFA the user directory is hidden');
+select pg_temp.expect_error($$select admin_precheck(null, 'admin_users.create')$$, 'do not have permission');
+set request.jwt.claims = '{"aal":"aal2"}';
+select pg_temp.check(has_permission('admin_users.view'), 'with MFA: admin unlocked');
 
 -- ---------- Self-lockout protection ----------
 select pg_temp.expect_error($$update profiles set role_id = 'agent' where id = auth.uid()$$, 'own role');
@@ -150,6 +174,28 @@ select admin_precheck_role('assistant');
 select pg_temp.expect_error($$select admin_precheck('00000000-0000-0000-0000-00000000000a', 'admin_users.edit')$$, 'Only a Super Admin');
 select pg_temp.expect_error($$select mark_password_reset('00000000-0000-0000-0000-00000000000c', null)$$, 'permission denied');
 select pg_temp.check(true, 'Edge Function prechecks enforce the same rules');
+reset role;
+
+-- ---------- Access review ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_error($$select access_review_data()$$, 'Not allowed');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check((select jsonb_array_length(access_review_data()->'users') = 4), 'review lists every user with permissions');
+select complete_access_review('Monthly check, all good');
+select pg_temp.check((select count(*) = 1 from access_reviews), 'review saved with snapshot');
+select pg_temp.check((select access_review_data()->'last_review'->>'notes' = 'Monthly check, all good'), 'last review shown');
+
+-- ---------- New agreement version forces re-acceptance ----------
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_error($$select publish_policy('v2', 'x', 'y')$$, 'Only a Super Admin');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select publish_policy('2026-12-01', 'Acceptable Use and Privacy Agreement', 'Updated text');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.check((select jsonb_array_length(my_access()->'permissions') = 0
+  and my_access()->>'policy_required' = '2026-12-01'), 'publishing a new agreement pauses access until accepted');
+select accept_policy('2026-12-01');
+select pg_temp.check(has_permission('clients.view'), 'access returns after accepting');
 reset role;
 
 \echo ALL RBAC TESTS PASSED

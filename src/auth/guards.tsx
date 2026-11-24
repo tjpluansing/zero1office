@@ -12,6 +12,9 @@ export function RequireAuth() {
   if (loading) return <FullPageSpinner />;
   if (!access) return <Navigate to="/login" replace state={{ from: loc.pathname + loc.search }} />;
   if (access.must_change_password) return <Navigate to="/change-password" replace state={{ from: loc.pathname + loc.search }} />;
+  const from = { from: loc.pathname + loc.search };
+  if (access.policy_required) return <Navigate to="/agreement" replace state={from} />;
+  if (access.mfa_enrolled && access.aal !== "aal2") return <Navigate to="/verify-code" replace state={from} />;
   if (access.status === "pending") return <Navigate to="/pending" replace />;
   return <Outlet />;
 }
@@ -19,7 +22,7 @@ export function RequireAuth() {
 /** Page-level guard. The database blocks the data too; this blocks the screen. */
 export function RequirePermission({ permission, children }: { permission: string; children: ReactNode }) {
   const { can } = useAuth();
-  return can(permission) ? <>{children}</> : <Forbidden />;
+  return can(permission) ? <>{children}</> : <Forbidden permission={permission} />;
 }
 
 export function HomeRedirect() {

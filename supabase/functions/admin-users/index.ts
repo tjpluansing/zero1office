@@ -32,7 +32,8 @@ type Body =
       overrides?: { permission_key: string; effect: "grant" | "deny" }[] }
   | { action: "set_status"; user_id: string; status: "active" | "suspended" }
   | { action: "delete"; user_id: string }
-  | { action: "reset_password"; user_id: string; mode: "email" | "temp_password" };
+  | { action: "reset_password"; user_id: string; mode: "email" | "temp_password" }
+  | { action: "reset_mfa"; user_id: string };
 
 class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -181,6 +182,24 @@ Deno.serve(async (req) => {
         const { error: mErr } = await admin.rpc("mark_password_reset", { p_user: body.user_id, p_actor: actorId });
         if (mErr) throw new HttpError(500, mErr.message);
         return json(200, { temp_password: password });
+      }
+
+      case "reset_mfa": {
+        // For a lost phone: removes their two-step factors so they can set
+        // it up again at next sign-in. Admin and export features stay locked
+        // for them until they do.
+        await check(caller, "admin_precheck", { p_user: body.user_id, p_perm: "admin_users.edit" });
+        const { data, error } = await admin.auth.admin.mfa.listFactors({ userId: body.user_id });
+        if (error) throw new HttpError(400, error.message);
+        for (const f of data.factors) {
+          const { error: dErr } = await admin.auth.admin.mfa.deleteFactor({ userId: body.user_id, id: f.id });
+          if (dErr) throw new HttpError(400, dErr.message);
+        }
+        await admin.rpc("audit_admin_action", {
+          p_actor: actorId, p_action: "mfa.reset_by_admin", p_target: body.user_id,
+          p_details: { factors_removed: data.factors.length },
+        });
+        return json(200, { ok: true });
       }
 
       default:

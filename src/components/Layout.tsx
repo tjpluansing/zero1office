@@ -1,6 +1,6 @@
-import { LogOut, Menu, ShieldCheck } from "lucide-react";
+import { KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { isDemo } from "../lib/api";
 import { NAV } from "../lib/nav";
@@ -56,7 +56,13 @@ export default function Layout() {
             </>
           )}
         </nav>
-        <div className="mt-4 rounded-xl bg-white/5 p-3">
+        <NavLink to="/security" onClick={() => setOpen(false)}
+          className={({ isActive }) => cx("mt-4 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
+            isActive ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white")}>
+          <KeyRound className="h-4 w-4" /> Sign-in security
+          {access && !access.mfa_enrolled && <span className="ml-auto h-2 w-2 rounded-full bg-gold" />}
+        </NavLink>
+        <div className="mt-2 rounded-xl bg-white/5 p-3">
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 place-items-center rounded-full bg-gold/90 text-sm font-semibold text-navy">{initials}</div>
             <div className="min-w-0 flex-1">
@@ -82,6 +88,17 @@ export default function Layout() {
         {isDemo && (
           <div className="bg-gold-50 px-4 py-1.5 text-center text-xs text-[#7a5a14]">
             Demo mode: sample users stored in this browser only. Connect Supabase to enforce permissions on the server.
+          </div>
+        )}
+        {access && access.mfa_locked.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 bg-navy-50 px-4 py-2 text-center text-sm text-navy">
+            <ShieldAlert className="h-4 w-4" />
+            {access.mfa_enrolled
+              ? "Admin and export features need this sign-in verified with your code."
+              : "Turn on two-step verification to unlock your admin and export features."}
+            <Link to={access.mfa_enrolled ? "/verify-code" : "/security"} className="font-semibold underline">
+              {access.mfa_enrolled ? "Verify now" : "Set it up"}
+            </Link>
           </div>
         )}
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8">

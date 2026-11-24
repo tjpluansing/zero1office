@@ -1,4 +1,5 @@
 import type {
+  AccessReviewData, MfaEnrollment, Policy,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
@@ -20,6 +21,13 @@ export interface Api {
   updatePassword(newPassword: string): Promise<void>;
   getAccess(): Promise<Access | null>;
 
+  // --- agreement + two-step ---
+  getPolicy(): Promise<Policy | null>;
+  acceptPolicy(version: string): Promise<void>;
+  mfaEnroll(): Promise<MfaEnrollment>;
+  /** Confirms a new authenticator, or verifies the sign-in code for an enrolled one. */
+  mfaVerify(code: string, factorId?: string): Promise<void>;
+
   // --- user management ---
   getCatalog(): Promise<Catalog>;
   listUsers(): Promise<UserRow[]>;
@@ -30,6 +38,9 @@ export interface Api {
   setStatus(userId: string, status: Exclude<UserStatus, "pending">): Promise<void>;
   deleteUser(userId: string): Promise<void>;
   resetPassword(userId: string, mode: "email" | "temp_password"): Promise<{ temp_password?: string }>;
+  resetMfa(userId: string): Promise<void>;
+  getAccessReview(): Promise<AccessReviewData>;
+  completeAccessReview(notes: string): Promise<void>;
   listAudit(limit?: number): Promise<AuditRow[]>;
   exportAudit(): Promise<AuditRow[]>;
 
@@ -53,6 +64,7 @@ export function errorText(e: unknown): string {
   if (/Email not confirmed/i.test(msg)) return "Open the invite email first to confirm your address.";
   if (/banned/i.test(msg)) return "This account is suspended. Ask an admin.";
   if (/Database error saving new user/i.test(msg)) return "Only @ask-karla.com accounts can sign in.";
+  if (/Invalid TOTP code|invalid.*code/i.test(msg)) return "That code didn't match. Check the time on your phone and try the newest code.";
   if (/row-level security|permission denied/i.test(msg)) return "You do not have permission to do that.";
   return msg;
 }

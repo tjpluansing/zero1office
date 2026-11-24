@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
-import type { Access, AuditRow, Catalog, ClientRow, Override, UserRow } from "./types";
+import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
 
 export function createSupabaseApi(): Api {
   const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, {
@@ -63,6 +63,38 @@ export function createSupabaseApi(): Api {
       const { data: s } = await sb.auth.getSession();
       if (!s.session) return null;
       return must(await sb.rpc("my_access")) as Access | null;
+    },
+
+    async getPolicy() {
+      return must(await sb.rpc("current_policy")) as Policy | null;
+    },
+    async acceptPolicy(version) {
+      must(await sb.rpc("accept_policy", { p_version: version }));
+    },
+    async mfaEnroll(): Promise<MfaEnrollment> {
+      // Drop any half-finished setup first so the user gets a fresh QR code.
+      const { data: list } = await sb.auth.mfa.listFactors();
+      for (const f of list?.all ?? []) {
+        if (f.status === "unverified") await sb.auth.mfa.unenroll({ factorId: f.id });
+      }
+      const d = must(await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Authenticator app" }));
+      return { factorId: d.id, qrSvg: d.totp.qr_code, secret: d.totp.secret };
+    },
+    async mfaVerify(code, factorId) {
+      let id = factorId;
+      if (!id) {
+        const { data } = await sb.auth.mfa.listFactors();
+        id = data?.totp?.[0]?.id;
+        if (!id) throw new Error("No authenticator is set up for this account.");
+      }
+      must(await sb.auth.mfa.challengeAndVerify({ factorId: id, code }));
+    },
+    resetMfa: async (userId) => { await adminCall({ action: "reset_mfa", user_id: userId }); },
+    async getAccessReview() {
+      return must(await sb.rpc("access_review_data")) as AccessReviewData;
+    },
+    async completeAccessReview(notes) {
+      must(await sb.rpc("complete_access_review", { p_notes: notes }));
     },
 
     async getCatalog(): Promise<Catalog> {

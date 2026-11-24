@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { Alert, Badge, Button, Field, Input, Modal, PageHeader, Select, Spinner, cx, relativeTime } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
-import type { Catalog, UserRow } from "../../lib/types";
+import type { AccessReviewData, Catalog, UserRow } from "../../lib/types";
+import { Link } from "react-router-dom";
+import { reviewDue } from "./AccessReview";
 import UserEditor from "./UserEditor";
 
 type Dialog =
@@ -31,6 +33,8 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [review, setReview] = useState<AccessReviewData | null>(null);
+  useEffect(() => { api.getAccessReview().then(setReview).catch(() => undefined); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +105,17 @@ export default function UsersPage() {
         ))}
       </div>
 
+      {catalog && users.filter((u) => u.status === "active" && isSuperRole(u.role_id)).length < 2 && (
+        <div className="mb-4"><Alert tone="amber">
+          <b>Only one active Super Admin.</b> If that account is lost, nobody can manage users. Make a second trusted person
+          (e.g. Karla) a Super Admin and keep an emergency login in the company password manager.
+        </Alert></div>
+      )}
+      {review && reviewDue(review).overdue && (
+        <div className="mb-4"><Alert tone="navy">
+          The monthly access review is due. <Link to="/admin/access-review" className="font-semibold underline">Review access</Link>
+        </Alert></div>
+      )}
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
       {notice && !error && <div className="mb-4"><Alert tone="green">{notice}</Alert></div>}
 
@@ -180,7 +195,7 @@ export default function UsersPage() {
                           )
                         )}
                         {can("admin_users.edit") && (
-                          <IconBtn label="Reset password" icon={KeyRound} disabled={protectedRow} why={whyNot}
+                          <IconBtn label="Reset sign-in" icon={KeyRound} disabled={protectedRow} why={whyNot}
                             onClick={() => setDialog({ kind: "reset", user: u })} />
                         )}
                         {can("admin_users.delete") && (
@@ -216,7 +231,7 @@ export default function UsersPage() {
       {dialog?.kind === "reset" && (
         <ResetDialog user={dialog.user} onClose={() => setDialog(null)}
           onDone={(pw) => { setDialog(pw ? { kind: "temp", email: dialog.user.email, password: pw } : null);
-            if (!pw) setNotice(`Reset link emailed to ${dialog.user.email}.`); void load(); }} />
+            if (!pw) setNotice(`Done for ${dialog.user.email}.`); void load(); }} />
       )}
       {dialog?.kind === "temp" && <TempPasswordDialog email={dialog.email} password={dialog.password} onClose={() => setDialog(null)} />}
     </div>
@@ -253,12 +268,13 @@ function DeleteDialog({ user, onClose, onConfirm }: { user: UserRow; onClose: ()
 }
 
 function ResetDialog({ user, onClose, onDone }: { user: UserRow; onClose: () => void; onDone: (tempPassword?: string) => void }) {
-  const [busy, setBusy] = useState<"email" | "temp_password" | null>(null);
+  const [busy, setBusy] = useState<"email" | "temp_password" | "mfa" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const go = async (mode: "email" | "temp_password") => {
+  const go = async (mode: "email" | "temp_password" | "mfa") => {
     setBusy(mode);
     setError(null);
     try {
+      if (mode === "mfa") { await api.resetMfa(user.id); onDone(); return; }
       const r = await api.resetPassword(user.id, mode);
       onDone(r.temp_password);
     } catch (e) {
@@ -267,13 +283,16 @@ function ResetDialog({ user, onClose, onDone }: { user: UserRow; onClose: () => 
     }
   };
   return (
-    <Modal title="Reset password" onClose={onClose}>
+    <Modal title="Reset sign-in" onClose={onClose}>
       <div className="space-y-3 text-sm">
         {error && <Alert>{error}</Alert>}
         <p>How should <b>{user.email}</b> get back in?</p>
         <Button className="w-full justify-start" loading={busy === "email"} onClick={() => go("email")}>Email them a reset link</Button>
         <Button className="w-full justify-start" loading={busy === "temp_password"} onClick={() => go("temp_password")}>
           Give me a temporary password (they must change it at sign-in)
+        </Button>
+        <Button className="w-full justify-start" loading={busy === "mfa"} onClick={() => go("mfa")}>
+          Reset two-step verification (lost phone)
         </Button>
       </div>
     </Modal>

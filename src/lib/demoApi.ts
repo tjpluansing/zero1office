@@ -7,6 +7,7 @@
 import type { Api, AuthEvent } from "./api";
 import { computeEffective } from "./permissions";
 import type {
+  AccessReviewData, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
 } from "./types";
 
@@ -63,22 +64,48 @@ const catalog: Catalog = {
   },
 };
 
-interface DemoUser extends Omit<UserRow, "override_count"> { overrides: Override[] }
-interface DemoState { users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null }
+interface DemoUser extends Omit<UserRow, "override_count"> { overrides: Override[]; policy: string | null; mfa: boolean }
+interface DemoState {
+  users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null; aal: "aal1" | "aal2";
+  reviews: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string }[];
+}
 
-const KEY = "z1-demo-state-v1";
+const POLICY: Policy = {
+  version: "2026-11-24",
+  title: "Acceptable Use and Privacy Agreement",
+  published_at: "2026-11-24T00:00:00Z",
+  body_markdown: [
+    "By using zero1office you agree to the following. Ask Karla follows the Data Privacy Act of 2012 and the National Privacy Commission's rules on the security of personal data.",
+    "**1. Need to know.** Open, copy or export client information only when your current task needs it.",
+    "**2. Your account is yours alone.** Do not share your password or two-step codes. Lock or sign out when you step away.",
+    "**3. Passwords.** At least 12 characters, not used on any other site, kept in the company password manager.",
+    "**4. Keep data inside approved tools.** No client details in personal email, chat apps, cloud storage or public AI tools.",
+    "**5. Exports and downloads.** Export only what you need and delete files once done. Every export is logged.",
+    "**6. Documents stay with insurers.** Do not keep copies of IDs, medical or financial documents after submission.",
+    "**7. Devices.** Screen lock and current updates. Report a lost device to Paolo the same day.",
+    "**8. Report problems right away.** Tell Paolo and the Data Protection Officer within 24 hours.",
+    "**9. Monitoring.** Sign-ins, changes and exports are recorded and reviewed.",
+    "**10. Consequences.** Breaking these rules can lead to loss of access and disciplinary action.",
+  ].join("\n\n"),
+};
+const sensitive = (k: string) => /^(admin_users|admin_settings)\./.test(k) || k.endsWith(".export");
+
+const KEY = "z1-demo-state-v2";
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 
 function seed(): DemoState {
   const u = (id: string, email: string, full_name: string, role_id: string, status: UserStatus,
     last: number | null, extra: Partial<DemoUser> = {}): DemoUser => ({
     id, email, full_name, role_id, status, must_change_password: false,
-    last_login_at: last === null ? null : hoursAgo(last), created_at: hoursAgo(400), overrides: [], ...extra,
+    last_login_at: last === null ? null : hoursAgo(last), created_at: hoursAgo(400), overrides: [],
+    policy: POLICY.version, mfa: false, ...extra,
   });
   return {
     sessionUserId: null,
+    aal: "aal1",
+    reviews: [],
     users: [
-      u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true }),
+      u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true, policy: null }),
       u("u-karla", "karla@ask-karla.com", "Karla", "agent", "active", 3, {
         overrides: [{ permission_key: "admin_users.view", effect: "grant" }],
       }),
@@ -101,7 +128,7 @@ export function createDemoApi(): Api {
   let state: DemoState;
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
-    if (!state?.users) throw new Error();
+    if (!state?.users || !state.reviews) throw new Error();
   } catch {
     state = seed();
   }
@@ -111,8 +138,10 @@ export function createDemoApi(): Api {
   const me = () => state.users.find((u) => u.id === state.sessionUserId) ?? null;
   const isSuper = (u: DemoUser | null) => !!u && u.status === "active" && u.role_id === "super_admin";
   const effective = (u: DemoUser | null) =>
-    !u || u.status !== "active" || u.must_change_password ? new Set<string>() : computeEffective(catalog, u.role_id, u.overrides);
-  const can = (k: string) => effective(me()).has(k);
+    !u || u.status !== "active" || u.must_change_password || u.policy !== POLICY.version
+      ? new Set<string>() : computeEffective(catalog, u.role_id, u.overrides);
+  const session = () => new Set([...effective(me())].filter((k) => !sensitive(k) || state.aal === "aal2"));
+  const can = (k: string) => session().has(k);
   const need = (k: string) => { if (!can(k)) throw new Error(`You do not have permission (${k})`); };
   const target = (id: string) => {
     const t = state.users.find((u) => u.id === id);
@@ -141,6 +170,7 @@ export function createDemoApi(): Api {
       if (!u || password !== "demo") throw new Error("Invalid login credentials");
       if (u.status === "suspended") throw new Error("User is banned");
       state.sessionUserId = u.id;
+      state.aal = "aal1";
       u.last_login_at = new Date().toISOString();
       log("user.login", u.id);
       save(); emit("SIGNED_IN");
@@ -148,7 +178,7 @@ export function createDemoApi(): Api {
     async signInWithMicrosoft() {
       throw new Error("Microsoft sign-in works once Supabase is connected. In the demo, use a password.");
     },
-    async signOut() { state.sessionUserId = null; save(); emit("SIGNED_OUT"); },
+    async signOut() { state.sessionUserId = null; state.aal = "aal1"; save(); emit("SIGNED_OUT"); },
     async sendPasswordReset() { await wait(); },
     async updatePassword(pw) {
       await wait();
@@ -163,9 +193,63 @@ export function createDemoApi(): Api {
       const u = me();
       if (!u) return null;
       const role = catalog.roles.find((r) => r.id === u.role_id)!;
+      const sess = session();
       return { id: u.id, email: u.email, full_name: u.full_name, role_id: u.role_id, role_name: role.name,
         is_super: isSuper(u), status: u.status, must_change_password: u.must_change_password,
-        last_login_at: u.last_login_at, idle_minutes: 30, permissions: [...effective(u)].sort() };
+        policy_required: u.policy === POLICY.version ? null : POLICY.version, aal: state.aal, mfa_enrolled: u.mfa,
+        last_login_at: u.last_login_at, idle_minutes: 30, permissions: [...sess].sort(),
+        mfa_locked: [...effective(u)].filter((k) => !sess.has(k)).sort() };
+    },
+    async getPolicy() { return POLICY; },
+    async acceptPolicy(version) {
+      const u = me();
+      if (!u) throw new Error("Not signed in");
+      if (version !== POLICY.version) throw new Error("That agreement is out of date. Reload the page.");
+      u.policy = version;
+      log("policy.accepted", u.id, { version }, "policy");
+      save();
+    },
+    async mfaEnroll() {
+      await wait();
+      return { factorId: "demo-factor", secret: "JBSWY3DPEHPK3PXP",
+        qrSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/>${
+          Array.from({ length: 29 * 29 }, (_, i) => ((i * 7919) % 13 < 6 ? `<rect x="${i % 29}" y="${Math.floor(i / 29)}" width="1" height="1"/>` : "")).join("")}</svg>` };
+    },
+    async mfaVerify(code) {
+      await wait();
+      const u = me();
+      if (!u) throw new Error("Not signed in");
+      if (code !== "123456") throw new Error("Invalid TOTP code entered");
+      if (!u.mfa) log("mfa.enrolled", u.id);
+      u.mfa = true;
+      state.aal = "aal2";
+      save();
+    },
+    async resetMfa(id) {
+      need("admin_users.edit");
+      const t = target(id);
+      guardTarget(t);
+      t.mfa = false;
+      log("mfa.reset_by_admin", id, { email: t.email });
+      save();
+    },
+    async getAccessReview(): Promise<AccessReviewData> {
+      need("admin_users.view");
+      return {
+        review_days: 30,
+        last_review: state.reviews[0] ?? null,
+        users: state.users.map((u) => ({ id: u.id, email: u.email, full_name: u.full_name, role_id: u.role_id,
+          status: u.status, last_login_at: u.last_login_at, created_at: u.created_at, mfa: u.mfa,
+          overrides: u.overrides.length,
+          permissions: u.status === "active" ? [...computeEffective(catalog, u.role_id, u.overrides)].sort() : [] })),
+      };
+    },
+    async completeAccessReview(notes) {
+      need("admin_users.edit");
+      state.reviews.unshift({ id: state.reviews.length + 1, reviewed_at: new Date().toISOString(),
+        reviewer_email: me()?.email ?? null, notes });
+      log("access_review.completed", null, { users: state.users.length, notes }, "access_review");
+      save();
     },
 
     async getCatalog() { return catalog; },
@@ -215,7 +299,7 @@ export function createDemoApi(): Api {
       const temp_password = input.mode === "temp_password" ? temp() : undefined;
       state.users.push({ id, email, full_name: input.full_name, role_id: input.role_id, status: "active",
         must_change_password: input.mode === "temp_password", last_login_at: null,
-        created_at: new Date().toISOString(), overrides: input.overrides });
+        created_at: new Date().toISOString(), overrides: input.overrides, policy: null, mfa: false });
       log("user.created", id, { email, role: input.role_id, via: input.mode });
       save();
       return { user_id: id, temp_password };

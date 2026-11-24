@@ -43,9 +43,47 @@ export interface Access {
   is_super: boolean;
   status: UserStatus;
   must_change_password: boolean;
+  /** version the user still has to accept, or null */
+  policy_required: string | null;
+  aal: "aal1" | "aal2";
+  mfa_enrolled: boolean;
   last_login_at: string | null;
   idle_minutes: number;
   permissions: string[];
+  /** permissions the user holds but can only use after two-step verification */
+  mfa_locked: string[];
+}
+
+export interface Policy {
+  version: string;
+  title: string;
+  body_markdown: string;
+  published_at: string;
+}
+
+export interface MfaEnrollment {
+  factorId: string;
+  qrSvg: string;
+  secret: string;
+}
+
+export interface ReviewUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role_id: string;
+  status: UserStatus;
+  last_login_at: string | null;
+  created_at: string;
+  mfa: boolean;
+  overrides: number;
+  permissions: string[];
+}
+
+export interface AccessReviewData {
+  review_days: number;
+  last_review: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string } | null;
+  users: ReviewUser[];
 }
 
 export interface UserRow {
