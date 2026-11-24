@@ -56,6 +56,7 @@ The matrix picks it up automatically.
    ```bash
    supabase functions deploy admin-users
    supabase functions deploy integrations
+   supabase functions deploy ghl-webhook --no-verify-jwt   # GHL has no Supabase login; it checks its own signature or secret
    supabase secrets set APP_URL=https://app.ask-karla.com
    ```
 6. **Create Paolo's Super Admin** (on your own computer; the service key never goes in the app):
@@ -87,11 +88,25 @@ The matrix picks it up automatically.
 | Warning while only one Super Admin exists | Manage Users |
 | Admin reset of a lost authenticator | Manage Users → Reset sign-in |
 | Admin → Integrations: GoHighLevel, Microsoft 365, Claude API with keys in Supabase Vault, test connection, pause, disconnect | migration 5, `supabase/functions/integrations`, `src/pages/admin/Integrations.tsx` |
+| GHL webhooks: signature or secret checked, each event stored once, retries with backoff, Sync log with Retry | migration 6, `supabase/functions/ghl-webhook`, Integrations page |
 | Written access control and password policy | `docs/policies/access-control-and-password-policy.md` |
 
 Edit the agreement wording in migration 4 before launch. To change it later, run
 `select publish_policy('2027-01-15', 'Acceptable Use and Privacy Agreement', '<text>');` in the Supabase SQL editor;
 everyone accepts again at their next request.
+
+## GHL webhooks
+
+GHL sends contact changes to `https://<project>.supabase.co/functions/v1/ghl-webhook`. Each delivery must carry
+GHL's Ed25519 `X-GHL-Signature` or the `X-Webhook-Secret` created on Admin → Integrations → GoHighLevel (only its
+hash is stored). Events are stored once and turned into Client Masterlist rows; a GHL delete never deletes a client.
+
+Turn on `pg_cron` (Database → Extensions) and schedule the retries and the 30/180-day clean-up in the SQL editor:
+
+```sql
+select cron.schedule('z1-sync-retries', '* * * * *', $$select public.process_integration_events(50, 'schedule')$$);
+select cron.schedule('z1-sync-purge', '15 3 * * *', $$select public.purge_integration_events()$$);
+```
 
 ## Tests
 

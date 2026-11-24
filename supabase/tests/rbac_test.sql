@@ -228,4 +228,84 @@ reset role;
 select pg_temp.check((select count(*) = 0 from vault.secrets), 'disconnect deletes the stored key');
 select pg_temp.check((select count(*) >= 3 from audit_log where target_type = 'integration'), 'integration changes are audited');
 
+
+-- ---------- GHL webhooks, sync log, retries ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo, aal2
+select integration_save('ghl', '{"location_id":"loc123","sync_contacts":true}', 'pit-0000-1111-2222-wxyz', true);
+create temp table s (v text);
+grant all on s to authenticated;
+insert into s select integration_new_webhook_secret('ghl');
+select pg_temp.check((select v like 'whsec_%' and length(v) = 70 from s), 'webhook secret is generated and shown once');
+select pg_temp.expect_error($$select webhook_secret_hash from integrations$$, 'permission denied');
+select pg_temp.expect_error($$select integration_check_webhook_secret('ghl', 'x')$$, 'permission denied');
+select pg_temp.expect_error($$select ghl_ingest_event('e1', '{}', 'test')$$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.expect_error($$select integration_new_webhook_secret('ghl')$$, 'permission');
+reset role;
+select pg_temp.check((select integration_check_webhook_secret('ghl', v) from s), 'the right secret is accepted');
+select pg_temp.check((select not integration_check_webhook_secret('ghl', v || 'x') from s), 'a wrong secret is refused');
+
+-- marketplace-style event and a workflow-style event
+select ghl_ingest_event('wh-1', '{"type":"ContactCreate","locationId":"loc123","id":"ct-1","firstName":"Liza","lastName":"Soberano","email":"Liza@Example.com","phone":"+639170000009"}', 'ghl_signature');
+select pg_temp.check((select ghl_ingest_event('wh-1', '{"type":"ContactCreate","locationId":"loc123","id":"ct-1","firstName":"Liza"}', 'ghl_signature') is null),
+  'the same event twice is stored once');
+select ghl_ingest_event(null, '{"contact_id":"ct-2","full_name":"Pedro Penduko","email":"pedro@example.com","location":{"id":"loc123"}}', 'webhook_secret');
+select ghl_ingest_event('wh-3', '{"type":"ContactCreate","locationId":"other","id":"ct-3","firstName":"Spy"}', 'ghl_signature');
+select ghl_ingest_event('wh-4', '{"type":"ContactCreate","locationId":"loc123","id":"ct-4"}', 'ghl_signature');
+select ghl_ingest_event('wh-5', '{"type":"InboundMessage","locationId":"loc123"}', 'ghl_signature');
+select pg_temp.check((select summary = 'Liza S.' from integration_events where event_id = 'wh-1'), 'log summary shows first name and initial only');
+select process_integration_events(50, 'webhook');
+select pg_temp.check((select source = 'ghl' and email = 'liza@example.com' from clients where ghl_contact_id = 'ct-1'), 'GHL contact becomes a client');
+select pg_temp.check((select full_name = 'Pedro Penduko' from clients where ghl_contact_id = 'ct-2'), 'workflow webhook contact becomes a client');
+select pg_temp.check((select count(*) = 0 from clients where ghl_contact_id = 'ct-3'), 'events from another sub-account are ignored');
+select pg_temp.check((select status = 'failed' and attempts = 1 from integration_events where event_id = 'wh-4'),
+  'an unusable event fails at once instead of retrying');
+select pg_temp.check((select status = 'ignored' from integration_events where event_id = 'wh-5'), 'unhandled event types are ignored');
+select pg_temp.check((select processed = 5 and succeeded = 2 and ignored = 2 and failed = 1 from integration_runs order by id desc limit 1),
+  'the sync log records the run');
+
+select ghl_ingest_event('wh-6', '{"type":"ContactUpdate","locationId":"loc123","id":"ct-1","phone":"+639170000010"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select phone = '+639170000010' and full_name = 'Liza Soberano' and count(*) over () = 1
+  from clients where ghl_contact_id = 'ct-1'), 'an update changes the same client and keeps other fields');
+select ghl_ingest_event('wh-7', '{"type":"ContactDelete","locationId":"loc123","id":"ct-1"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select count(*) = 1 from clients where ghl_contact_id = 'ct-1'), 'a GHL delete never deletes the client');
+
+-- transient failure: retry with backoff, then give up
+alter table clients add constraint test_block check (full_name <> 'Flaky Contact');
+select ghl_ingest_event('wh-8', '{"type":"ContactCreate","locationId":"loc123","id":"ct-8","firstName":"Flaky","lastName":"Contact"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select status = 'retrying' and attempts = 1 and next_attempt_at > now() + interval '50 seconds'
+  from integration_events where event_id = 'wh-8'), 'a failed event waits before retrying');
+update integration_events set next_attempt_at = now() where event_id = 'wh-8';
+select process_integration_events();
+select pg_temp.check((select attempts = 2 and next_attempt_at > now() + interval '3 minutes' from integration_events where event_id = 'wh-8'),
+  'the wait grows each time');
+update integration_events set attempts = integration_max_attempts() - 1, next_attempt_at = now() where event_id = 'wh-8';
+select process_integration_events();
+select pg_temp.check((select status = 'failed' from integration_events where event_id = 'wh-8'), 'it stops as failed after the last attempt');
+alter table clients drop constraint test_block;
+
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.check((select count(*) = 0 from integration_events), 'non-admins cannot see the sync log');
+select pg_temp.expect_error($$select integration_retry_event((select max(id) from integration_events))$$, 'permission');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select pg_temp.check((select count(*) >= 8 from integration_events), 'admins can see the sync log');
+select pg_temp.expect_error($$select payload from integration_events$$, 'permission denied');
+select pg_temp.expect_error($$select process_integration_events()$$, 'permission denied');
+select integration_retry_event((select id from integration_events where event_id = 'wh-8'));
+select pg_temp.check((select count(*) = 1 from clients where ghl_contact_id = 'ct-8'), 'Retry processes the event once the problem is fixed');
+select pg_temp.expect_error($$select integration_retry_event((select id from integration_events where event_id = 'wh-1'))$$, 'Only failed');
+reset role;
+update integration_events set received_at = now() - interval '31 days' where event_id = 'wh-1';
+select purge_integration_events();
+select pg_temp.check((select payload = '{}'::jsonb from integration_events where event_id = 'wh-1'), 'old payloads are blanked');
+update integrations set enabled = false where id = 'ghl';
+select ghl_ingest_event('wh-9', '{"type":"ContactCreate","locationId":"loc123","id":"ct-9","firstName":"Later"}', 'ghl_signature');
+select pg_temp.check((select (process_integration_events()->>'paused')::boolean and
+  (select status = 'pending' from integration_events where event_id = 'wh-9')), 'pausing GHL holds events in the queue');
+
 \echo ALL RBAC TESTS PASSED

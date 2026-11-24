@@ -7,7 +7,7 @@
 import type { Api, AuthEvent } from "./api";
 import { computeEffective } from "./permissions";
 import type {
-  AccessReviewData, IntegrationRow, Policy,
+  AccessReviewData, IntegrationEvent, IntegrationRow, IntegrationRun, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
 } from "./types";
 
@@ -71,6 +71,8 @@ interface DemoState {
   users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null; aal: "aal1" | "aal2";
   integrations: (IntegrationRow & { secret: string | null })[];
   reviews: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string }[];
+  events: IntegrationEvent[];
+  runs: IntegrationRun[];
 }
 
 const POLICY: Policy = {
@@ -95,6 +97,12 @@ const sensitive = (k: string) => /^(admin_users|admin_settings|integrations)\./.
 
 const KEY = "z1-demo-state-v3";
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+const ev = (id: number, event_type: string, summary: string | null, status: IntegrationEvent["status"], attempts: number,
+  x: { result?: string; last_error?: string; next?: number; by?: IntegrationEvent["verified_by"] } = {}): IntegrationEvent => ({
+  id, event_type, summary, status, attempts, verified_by: x.by ?? "ghl_signature",
+  received_at: hoursAgo(6 - id * 0.9), processed_at: status === "retrying" ? null : hoursAgo(6 - id * 0.9),
+  next_attempt_at: hoursAgo(x.next ?? 6 - id * 0.9), last_error: x.last_error ?? null, result: x.result ?? null, client_id: null,
+});
 
 function seed(): DemoState {
   const u = (id: string, email: string, full_name: string, role_id: string, status: UserStatus,
@@ -110,8 +118,22 @@ function seed(): DemoState {
     integrations: ([["ghl", "GoHighLevel"], ["m365", "Microsoft 365"], ["anthropic", "Claude API"]] as const).map(([id, name]) => ({
       id, name, enabled: false, config: {}, secret: null, secret_hint: null, status: "not_connected" as const,
       last_tested_at: null, last_test_ok: null, last_error: null, last_details: {}, secret_set_at: null,
-      updated_at: hoursAgo(1),
+      updated_at: hoursAgo(1), webhook_secret_hint: null, webhook_secret_set_at: null, last_event_at: null,
     })),
+    // Sample GHL webhook traffic so the Sync Log has something to show.
+    events: [
+      ev(6, "ContactCreate", "Rica M.", "retrying", 2, { last_error: "could not serialize access due to concurrent update", next: -0.2 }),
+      ev(5, "ContactCreate", null, "failed", 1, { last_error: "Contact has no name, email or phone" }),
+      ev(4, "InboundMessage", null, "ignored", 1, { result: "ignored: not handled yet" }),
+      ev(3, "ContactUpdate", "Ana R.", "done", 1, { result: "Updated client" }),
+      ev(2, "ContactUpsert", "Jose L.", "done", 1, { result: "Added client", by: "webhook_secret" }),
+      ev(1, "ContactCreate", "Mark S.", "done", 1, { result: "Added client" }),
+    ],
+    runs: [
+      { id: 3, trigger: "schedule", started_at: hoursAgo(0.3), finished_at: hoursAgo(0.3), processed: 1, succeeded: 0, ignored: 0, will_retry: 1, failed: 0 },
+      { id: 2, trigger: "webhook", started_at: hoursAgo(0.5), finished_at: hoursAgo(0.5), processed: 3, succeeded: 1, ignored: 1, will_retry: 1, failed: 0 },
+      { id: 1, trigger: "webhook", started_at: hoursAgo(5), finished_at: hoursAgo(5), processed: 3, succeeded: 2, ignored: 0, will_retry: 0, failed: 1 },
+    ],
     users: [
       u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true, policy: null }),
       u("u-karla", "karla@ask-karla.com", "Karla", "agent", "active", 3, {
@@ -136,7 +158,7 @@ export function createDemoApi(): Api {
   let state: DemoState;
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
-    if (!state?.users || !state.reviews || !state.integrations) throw new Error();
+    if (!state?.users || !state.reviews || !state.integrations || !state.events) throw new Error();
   } catch {
     state = seed();
   }
@@ -284,6 +306,36 @@ export function createDemoApi(): Api {
       Object.assign(r, { secret: null, secret_hint: null, secret_set_at: null, enabled: false, status: "not_connected",
         last_error: null, last_test_ok: null });
       log("integration.disconnected", null, { integration: id }, "integration");
+      save();
+    },
+    webhookUrl: () => null,
+    async newWebhookSecret(id) {
+      await wait();
+      need("integrations.edit");
+      const r = state.integrations.find((x) => x.id === id)!;
+      const secret = "whsec_" + Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
+      r.webhook_secret_hint = secret.slice(-4);
+      r.webhook_secret_set_at = new Date().toISOString();
+      log("integration.webhook_secret", id, { integration: id }, "integration");
+      save();
+      return secret;
+    },
+    async getSyncLog() {
+      need("integrations.view");
+      return { events: state.events, runs: state.runs };
+    },
+    async retryEvent(eventId) {
+      await wait();
+      need("integrations.edit");
+      const e = state.events.find((x) => x.id === eventId)!;
+      if (e.status !== "failed" && e.status !== "retrying") throw new Error("Only failed or waiting events can be retried");
+      log("integration.event_retried", "ghl", { integration: "ghl", event: eventId }, "integration");
+      const ok = !!e.summary; // the demo's "no name" event still fails
+      Object.assign(e, ok
+        ? { status: "done", result: "Added client", last_error: null, attempts: e.attempts + 1, processed_at: new Date().toISOString() }
+        : { status: "failed", attempts: 1, processed_at: new Date().toISOString() });
+      state.runs.unshift({ id: state.runs.length + 1, trigger: "manual", started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(), processed: 1, succeeded: ok ? 1 : 0, ignored: 0, will_retry: 0, failed: ok ? 0 : 1 });
       save();
     },
     async getAccessReview(): Promise<AccessReviewData> {

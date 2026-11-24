@@ -1,9 +1,9 @@
-import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, KeyRound, Lock, PauseCircle, PlugZap, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, Copy, ExternalLink, KeyRound, Lock, PauseCircle, PlugZap, RotateCw, ShieldCheck, Webhook } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { Alert, Badge, Button, Drawer, Field, Input, Modal, PageHeader, Select, Spinner, Toggle, cx, relativeTime } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
-import type { IntegrationId, IntegrationRow, TestResult } from "../../lib/types";
+import type { IntegrationEvent, IntegrationId, IntegrationRow, SyncLog, TestResult } from "../../lib/types";
 
 interface FieldDef {
   key: string;
@@ -111,7 +111,7 @@ const STATUS: Record<IntegrationRow["status"], { label: string; tone: "green" | 
 };
 
 const PLANNED = [
-  { name: "GHL webhooks", note: "New leads and replies arrive instantly instead of on a schedule (signed and verified)." },
+  { name: "GHL two-way sync", note: "Notes, tasks and status changes from zero1office written back to the GHL contact." },
   { name: "Canva Pro", note: "Fill brand templates for proposals and greetings from client data." },
   { name: "OneDrive Transit folder", note: "Hand documents to insurers, then auto-delete after submission." },
 ];
@@ -178,6 +178,10 @@ export default function IntegrationsPage() {
             );
           })}
         </div>
+      )}
+
+      {rows?.find((r) => r.id === "ghl" && (r.status !== "not_connected" || r.last_event_at)) && (
+        <SyncLogSection canEdit={can("integrations.edit")} />
       )}
 
       <h2 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-slate-500">Planned next</h2>
@@ -316,6 +320,11 @@ function IntegrationDrawer({ svc, row, canEdit, onClose, onChanged }: {
           </div>
         </section>
 
+        {svc.id === "ghl" && (
+          <WebhookSection row={row} canEdit={canEdit} on={!!config.webhook_enabled}
+            onToggle={(x) => set("webhook_enabled", x)} onChanged={onChanged} />
+        )}
+
         <Alert tone="navy"><b>Privacy:</b> {svc.privacy}</Alert>
       </div>
 
@@ -328,5 +337,216 @@ function IntegrationDrawer({ svc, row, canEdit, onClose, onChanged }: {
         </Modal>
       )}
     </Drawer>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Button variant="ghost" className="shrink-0" onClick={() => {
+      void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); });
+    }}>
+      <Copy className="h-4 w-4" /> {done ? "Copied" : "Copy"}
+    </Button>
+  );
+}
+
+function WebhookSection({ row, canEdit, on, onToggle, onChanged }: {
+  row: IntegrationRow; canEdit: boolean; on: boolean; onToggle: (on: boolean) => void; onChanged: () => void;
+}) {
+  const url = api.webhookUrl(row.id);
+  const [secret, setSecret] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function create() {
+    setConfirm(false);
+    setBusy(true);
+    setError(null);
+    try {
+      setSecret(await api.newWebhookSecret(row.id));
+      onChanged();
+    } catch (e) { setError(errorText(e)); }
+    setBusy(false);
+  }
+
+  return (
+    <section className="rounded-xl border p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-navy"><Webhook className="h-4 w-4" /> Instant updates (webhooks)</h3>
+          <p className="mt-0.5 text-xs text-slate-500">GHL tells zero1office the moment a contact is added or changed. Every delivery is checked, stored once, and retried if it fails.</p>
+        </div>
+        <Toggle label="Receive webhooks" checked={on} disabled={!canEdit} onChange={onToggle} />
+      </div>
+      {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+      {on && (
+        <div className="mt-4 space-y-4 text-sm">
+          <Field label="Webhook URL" hint="Paste this into GHL. It only accepts deliveries with your secret or GHL's own signature.">
+            <div className="flex gap-2">
+              <Input readOnly value={url ?? "https://<your-project>.supabase.co/functions/v1/ghl-webhook"} className="font-mono text-xs" />
+              {url && <CopyButton text={url} />}
+            </div>
+          </Field>
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <div>
+              <div className="font-medium">Webhook secret</div>
+              <div className="text-xs text-slate-500">
+                {row.webhook_secret_hint ? <>Set {relativeTime(row.webhook_secret_set_at).toLowerCase()} · ends in <span className="font-mono">{row.webhook_secret_hint}</span></> : "Not created yet"}
+              </div>
+            </div>
+            {canEdit && (
+              <Button loading={busy} onClick={() => (row.webhook_secret_hint ? setConfirm(true) : void create())}>
+                <KeyRound className="h-4 w-4" /> {row.webhook_secret_hint ? "Replace" : "Create secret"}
+              </Button>
+            )}
+          </div>
+          {secret && (
+            <Alert tone="amber">
+              <div className="mb-1"><b>Copy this now.</b> It will not be shown again.</div>
+              <div className="flex items-center gap-2">
+                <code className="block min-w-0 flex-1 break-all rounded bg-white px-2 py-1 text-xs">{secret}</code>
+                <CopyButton text={secret} />
+              </div>
+            </Alert>
+          )}
+          <ol className="space-y-2 text-slate-700">
+            {[
+              <>In GHL open <b>Automation → Workflows</b> and create <b>zero1office contact sync</b>.</>,
+              <>Add the triggers <b>Contact Created</b> and <b>Contact Changed</b>.</>,
+              <>Add the action <b>Custom Webhook</b>: method <b>POST</b>, the URL above, and a header <code className="rounded bg-slate-100 px-1">X-Webhook-Secret</code> with your secret. Send the contact's name, email, phone, company and ID.</>,
+              <>Publish the workflow, add a test contact, and check the <b>GoHighLevel sync log</b> on the Integrations page.</>,
+            ].map((s, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gold text-[11px] font-semibold text-navy">{i + 1}</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-slate-500">Turn on <b>Sync contacts</b> above so contacts are added to the Client Masterlist. A contact deleted in GHL is never deleted here.</p>
+        </div>
+      )}
+      {confirm && (
+        <Modal title="Replace the webhook secret?" onClose={() => setConfirm(false)} footer={<>
+          <Button onClick={() => setConfirm(false)}>Cancel</Button>
+          <Button variant="danger" onClick={create}>Replace secret</Button>
+        </>}>
+          <p className="text-sm">The old secret stops working at once. Updates from GHL will be refused until you paste the new one into the GHL workflow.</p>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+const EVENT_STATUS: Record<IntegrationEvent["status"], { label: string; tone: "green" | "red" | "amber" | "slate" | "navy" }> = {
+  done: { label: "Done", tone: "green" },
+  ignored: { label: "Skipped", tone: "slate" },
+  pending: { label: "Queued", tone: "navy" },
+  retrying: { label: "Will retry", tone: "amber" },
+  failed: { label: "Failed", tone: "red" },
+};
+
+function untilText(iso: string) {
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (mins <= 0) return "next run";
+  return mins < 60 ? `in ${mins} min` : `in ${Math.round(mins / 60)} h`;
+}
+
+function SyncLogSection({ canEdit }: { canEdit: boolean }) {
+  const [log, setLog] = useState<SyncLog | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"all" | "problems">("all");
+
+  const load = useCallback(() => api.getSyncLog("ghl").then(setLog).catch((e) => setError(errorText(e))), []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function retry(id: number) {
+    setBusy(id);
+    setError(null);
+    try { await api.retryEvent(id); await load(); } catch (e) { setError(errorText(e)); }
+    setBusy(null);
+  }
+
+  const events = log?.events ?? [];
+  const waiting = events.filter((e) => e.status === "retrying" || e.status === "pending").length;
+  const failed = events.filter((e) => e.status === "failed").length;
+  const shown = filter === "all" ? events : events.filter((e) => e.status === "failed" || e.status === "retrying");
+
+  return (
+    <section className="mt-10">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">GoHighLevel sync log</h2>
+          <p className="text-xs text-slate-500">Last 100 updates from GHL. Failed ones retry by themselves (1, 4, 16, 64 min, 4 h, 6 h), then wait for you.</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={filter} onChange={(e) => setFilter(e.target.value as "all" | "problems")} className="w-auto">
+            <option value="all">All updates</option>
+            <option value="problems">Only problems</option>
+          </Select>
+          <Button onClick={() => void load()}><RotateCw className="h-4 w-4" /> Refresh</Button>
+        </div>
+      </div>
+      {error && <div className="mb-3"><Alert>{error}</Alert></div>}
+      {!log ? <div className="grid h-24 place-items-center"><Spinner /></div> : <>
+        <div className="mb-3 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border bg-white px-4 py-3">
+            <div className="text-xs text-slate-500">Last update received</div>
+            <div className="mt-0.5 font-semibold text-navy">{events[0] ? relativeTime(events[0].received_at) : "None yet"}</div>
+          </div>
+          <div className={cx("rounded-xl border px-4 py-3", waiting ? "border-amber-300 bg-amber-50" : "bg-white")}>
+            <div className="text-xs text-slate-500">Waiting to retry</div>
+            <div className="mt-0.5 font-semibold text-navy">{waiting}</div>
+          </div>
+          <div className={cx("rounded-xl border px-4 py-3", failed ? "border-red-300 bg-red-50" : "bg-white")}>
+            <div className="text-xs text-slate-500">Failed, needs a look</div>
+            <div className="mt-0.5 font-semibold text-navy">{failed}</div>
+          </div>
+        </div>
+        <div className="overflow-x-auto rounded-xl border bg-white">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr><th className="px-4 py-2.5">When</th><th className="px-4 py-2.5">Update</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5">Result</th><th className="px-4 py-2.5" /></tr>
+            </thead>
+            <tbody className="divide-y">
+              {shown.map((e) => {
+                const st = EVENT_STATUS[e.status];
+                return (
+                  <tr key={e.id}>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-slate-500" title={e.received_at}>{relativeTime(e.received_at)}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium">{e.event_type}{e.summary && <span className="font-normal text-slate-500"> · {e.summary}</span>}</div>
+                      <div className="text-xs text-slate-400">{e.verified_by === "ghl_signature" ? "GHL signature verified" : e.verified_by === "webhook_secret" ? "Workflow secret verified" : "Test"}</div>
+                    </td>
+                    <td className="px-4 py-2.5"><Badge tone={st.tone}>{st.label}</Badge>
+                      {e.attempts > 1 && <div className="mt-0.5 text-xs text-slate-400">{e.attempts} tries</div>}</td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {e.status === "retrying" ? <><span className="text-amber-800">{e.last_error}</span><div className="text-xs text-slate-400">Next try {untilText(e.next_attempt_at)}</div></>
+                        : e.status === "failed" ? <span className="text-red-700">{e.last_error}</span>
+                        : e.result?.replace(/^ignored: /, "") ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {canEdit && (e.status === "failed" || e.status === "retrying") && (
+                        <Button loading={busy === e.id} onClick={() => void retry(e.id)}><RotateCw className="h-4 w-4" /> Retry now</Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {shown.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                {events.length === 0 ? "Nothing received yet. Turn on webhooks in GoHighLevel → Manage." : "No problems. Everything was processed."}
+              </td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {log.runs.length > 0 && (
+          <p className="mt-2 text-xs text-slate-500">
+            Last run {relativeTime(log.runs[0].started_at)} ({log.runs[0].trigger}): {log.runs[0].succeeded} done, {log.runs[0].ignored} skipped, {log.runs[0].will_retry} to retry, {log.runs[0].failed} failed.
+          </p>
+        )}
+      </>}
+    </section>
   );
 }

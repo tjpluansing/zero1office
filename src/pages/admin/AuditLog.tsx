@@ -21,6 +21,8 @@ const LABELS: Record<string, string> = {
   "integration.updated": "Changed an integration",
   "integration.tested": "Tested an integration",
   "integration.disconnected": "Disconnected an integration",
+  "integration.webhook_secret": "Created a webhook secret",
+  "integration.event_retried": "Retried a sync",
   "policy.accepted": "Accepted the agreement",
   "policy.published": "Published a new agreement",
   "mfa.enrolled": "Turned on two-step",

@@ -1,5 +1,5 @@
 import type {
-  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, TestResult,
+  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
@@ -45,6 +45,12 @@ export interface Api {
   saveIntegration(id: string, config: IntegrationRow["config"], secret: string | null, enabled: boolean): Promise<void>;
   testIntegration(id: string): Promise<TestResult>;
   disconnectIntegration(id: string): Promise<void>;
+  /** Where GHL should send webhooks, or null when there is no backend (demo). */
+  webhookUrl(id: string): string | null;
+  /** Creates or replaces the webhook secret. The secret is returned once and never again. */
+  newWebhookSecret(id: string): Promise<string>;
+  getSyncLog(id: string): Promise<SyncLog>;
+  retryEvent(eventId: number): Promise<void>;
   listAudit(limit?: number): Promise<AuditRow[]>;
   exportAudit(): Promise<AuditRow[]>;
 

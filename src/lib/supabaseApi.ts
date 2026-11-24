@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
-import type { IntegrationRow, TestResult } from "./types";
+import type { IntegrationRow, SyncLog, TestResult } from "./types";
 import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -101,7 +101,7 @@ export function createSupabaseApi(): Api {
 
     async listIntegrations() {
       return must(await sb.from("integrations")
-        .select("id, name, enabled, config, secret_hint, status, last_tested_at, last_test_ok, last_error, last_details, secret_set_at, updated_at")
+        .select("id, name, enabled, config, secret_hint, status, last_tested_at, last_test_ok, last_error, last_details, secret_set_at, updated_at, webhook_secret_hint, webhook_secret_set_at, last_event_at")
         .order("id")) as IntegrationRow[];
     },
     async saveIntegration(id, config, secret, enabled) {
@@ -110,6 +110,22 @@ export function createSupabaseApi(): Api {
     testIntegration: (id) => adminFn<TestResult>("integrations", { action: "test", id }),
     async disconnectIntegration(id) {
       must(await sb.rpc("integration_disconnect", { p_id: id }));
+    },
+    webhookUrl: (id) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${id}-webhook`,
+    async newWebhookSecret(id) {
+      return must(await sb.rpc("integration_new_webhook_secret", { p_id: id })) as string;
+    },
+    async getSyncLog(id): Promise<SyncLog> {
+      const [events, runs] = await Promise.all([
+        sb.from("integration_events")
+          .select("id, event_type, summary, verified_by, status, attempts, next_attempt_at, last_error, result, client_id, received_at, processed_at")
+          .eq("integration_id", id).order("received_at", { ascending: false }).limit(100),
+        sb.from("integration_runs").select("*").eq("integration_id", id).order("started_at", { ascending: false }).limit(20),
+      ]);
+      return { events: must(events), runs: must(runs) };
+    },
+    async retryEvent(eventId) {
+      must(await sb.rpc("integration_retry_event", { p_event: eventId }));
     },
 
     async getCatalog(): Promise<Catalog> {

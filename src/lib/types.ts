@@ -101,6 +101,41 @@ export interface IntegrationRow {
   last_details: Record<string, unknown>;
   secret_set_at: string | null;
   updated_at: string;
+  webhook_secret_hint: string | null;
+  webhook_secret_set_at: string | null;
+  last_event_at: string | null;
+}
+
+export interface IntegrationEvent {
+  id: number;
+  event_type: string;
+  summary: string | null;
+  verified_by: "ghl_signature" | "webhook_secret" | "test";
+  status: "pending" | "retrying" | "done" | "ignored" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  result: string | null;
+  client_id: string | null;
+  received_at: string;
+  processed_at: string | null;
+}
+
+export interface IntegrationRun {
+  id: number;
+  trigger: "webhook" | "schedule" | "manual";
+  started_at: string;
+  finished_at: string | null;
+  processed: number;
+  succeeded: number;
+  ignored: number;
+  will_retry: number;
+  failed: number;
+}
+
+export interface SyncLog {
+  events: IntegrationEvent[];
+  runs: IntegrationRun[];
 }
 
 export interface TestResult {
