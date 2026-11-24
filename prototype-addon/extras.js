@@ -220,7 +220,7 @@
   };
 
   /* ---------- Secretary (Paolo, 2026-11-25): every approval passes through her ---------- */
-  function sec() { return byId("secretary"); }
+  function sec() { var h = typeof HUMANS_TOP !== "undefined" ? HUMANS_TOP.filter(function (x) { return x.id === "secretary"; })[0] : null; return h || byId("secretary"); }
   function secName() { var x = sec(); return x ? x.n : "Your secretary"; }
   function secBanner(what) {
     var x = sec();
