@@ -593,7 +593,13 @@
   }
 
   /* ---------- hook into the original page ---------- */
-  NAV.push(["Back office", [["billing", "Billing & SOA", "so"]]]);
+  // Billing & SOA sits under Numbers, right after Proposals (Paolo, 2026-11-24).
+  (function () {
+    var num = NAV.filter(function (g) { return g[0] === "Numbers"; })[0];
+    if (!num) { NAV.push(["Numbers", [["billing", "Billing & SOA", "so"]]]); return; }
+    var at = num[1].length; num[1].forEach(function (it, i) { if (it[0] === "proposals") at = i + 1; });
+    num[1].splice(at, 0, ["billing", "Billing & SOA", "so"]);
+  })();
   var baseBadge = badgeCount;
   badgeCount = function (k) { return k === "so" ? needCount() : baseBadge(k); };
   VIEWS.billing = vBilling;
