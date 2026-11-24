@@ -18,7 +18,7 @@ export function Logo({ light }: { light?: boolean }) {
 export default function Layout() {
   const { access, can, signOut } = useAuth();
   const [open, setOpen] = useState(false);
-  const fullBleed = ["/office", "/preview"].includes(useLocation().pathname);
+  const fullBleed = useLocation().pathname === "/office";
   // Only pages the user may open are rendered. Route guards and the
   // database block the rest even if someone types the URL.
   const items = NAV.filter((n) => can(n.permission));
