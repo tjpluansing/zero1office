@@ -15,5 +15,5 @@ original page byte for byte; check that before publishing.
 
 `propgen.js` adds Numbers > Proposal generator. When a proposal is generated, the assigned Proposals agent checks it (fees recomputed from the rate tables, family totals, ages, client email, nearby providers, email template, files for the product). Once it is approved, the page creates an Outlook draft. The Microsoft 365 connector can't attach files, so the user saves the product files from the page and attaches them in Outlook before sending.
 
-Publish these with the page under `files/` (Paolo, 2026-11-24: the attachments for Maxicare Individual and Family): `mymaxicare-primer-with-rates.pdf` (from "MyMaxicare_Primer with Rates.pdf") and `maxicare-pccs-and-other-services.pdf` (from "Maxicare_PCCs_and_Other_Services.pdf").
+Publish these with the page under `files/` (Paolo, 2026-11-24: the attachments for Maxicare Individual and Family, in this order): `karla-luansing-maxicare-pubmat.jpg` (Karla's Maxicare pubmat), `mymaxicare-primer-with-rates.pdf` (from "MyMaxicare_Primer with Rates.pdf") and `maxicare-pccs-and-other-services.pdf` (from "Maxicare_PCCs_and_Other_Services.pdf").
 Also publish `data/providers.json` and `data/doctors.json` at the page root. Capabilities: `{mcp: {servers: [{server: "Microsoft 365", tools: ["outlook_create_draft"]}]}, downloads: true}`.

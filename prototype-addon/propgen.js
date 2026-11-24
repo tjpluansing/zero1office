@@ -404,8 +404,9 @@
   }
 
   /* ---------- files to attach, by product type (Paolo, 2026-11-24) ---------- */
-  // Paolo, 2026-11-24: Individual and Family plans attach the primer with rates and the PCCs and other services guide.
+  // Paolo, 2026-11-24: Individual and Family plans attach Karla's pubmat first, then the primer with rates and the PCCs and other services guide.
   var MX_FILES = [
+    ["files/karla-luansing-maxicare-pubmat.jpg", "Karla Luansing Maxicare Pubmat.jpg", "Maxicare plans and benefits at a glance"],
     ["files/mymaxicare-primer-with-rates.pdf", "MyMaxicare_Primer with Rates.pdf", "MyMaxicare primer with rates"],
     ["files/maxicare-pccs-and-other-services.pdf", "Maxicare_PCCs_and_Other_Services.pdf", "Maxicare Primary Care Clinics and other services"],
   ];
