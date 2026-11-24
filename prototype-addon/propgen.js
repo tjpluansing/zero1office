@@ -117,21 +117,30 @@
   var KIND = { H: "Hospitals", P: "Maxicare Primary Care Clinics", C: "Clinics", D: "Dental clinics" };
   var LIMIT = { H: 15, P: 6, C: 12, D: 12 };
   // Facilities in the client's city first; when the city has fewer than 3, add the rest of the province, then the region.
+  // Location is optional (Paolo, 2026-11-24). With a city, list facilities there first; with only a province or a region, list from there.
+  // When the chosen place has fewer than 3, add the rest of the province, then the region.
   function nearby(loc) {
+    if (!loc || !loc.region) return null;
     var out = {};
     ["H", "P", "C", "D"].forEach(function (k) {
       var all = PD.f.map(function (f, i) { return { i: i, f: f }; }).filter(function (x) { return x.f[1] === k && PD.regions[x.f[2]] === loc.region; });
-      var city = all.filter(function (x) { return x.f[3] === loc.prov && x.f[4] === loc.city; });
-      var prov = all.filter(function (x) { return x.f[3] === loc.prov && x.f[4] !== loc.city; });
-      var reg = all.filter(function (x) { return x.f[3] !== loc.prov; });
-      var pick = city.slice(0, LIMIT[k]).map(function (x) { x.where = ""; return x; });
-      [[prov, "province"], [reg, "region"]].forEach(function (g) {
+      var here = all.filter(function (x) { return (!loc.prov || x.f[3] === loc.prov) && (!loc.city || x.f[4] === loc.city); });
+      var prov = loc.city ? all.filter(function (x) { return x.f[3] === loc.prov && x.f[4] !== loc.city; }) : [];
+      var reg = loc.prov ? all.filter(function (x) { return x.f[3] !== loc.prov; }) : [];
+      var pick = here.slice(0, LIMIT[k]).map(function (x) { x.where = loc.city ? "" : title(x.f[4] || x.f[3]); return x; });
+      [prov, reg].forEach(function (g) {
         if (pick.length >= 3) return;
-        g[0].slice(0, Math.max(0, Math.min(LIMIT[k], 6) - pick.length)).forEach(function (x) { x.where = title(x.f[4] || x.f[3]); pick.push(x); });
+        g.slice(0, Math.max(0, Math.min(LIMIT[k], 6) - pick.length)).forEach(function (x) { x.where = title(x.f[4] || x.f[3]); pick.push(x); });
       });
-      out[k] = { list: pick, inCity: city.length };
+      out[k] = { list: pick, inCity: here.length };
     });
     return out;
+  }
+  function placeName(loc) {
+    if (!loc || !loc.region) return "";
+    if (loc.city) return title(loc.city) + ", " + title(loc.prov);
+    if (loc.prov) return title(loc.prov);
+    return REGION_NAME[loc.region] || loc.region;
   }
   function doctorsAt(facIdx, specs, perSpec) {
     if (!DD) return [];
@@ -185,10 +194,10 @@
     var provs = G.f.region && LOC[G.f.region] ? Object.keys(LOC[G.f.region]).sort() : [];
     var cities = G.f.prov && provs.indexOf(G.f.prov) > -1 ? Object.keys(LOC[G.f.region][G.f.prov]).sort() : [];
     return '<div class="z1-three">' +
-      sel("region", "Region *", [["", "Choose the region"]].concat(regs.map(function (r) { return [r, REGION_NAME[r] || r]; })), ' data-pgr="1"') +
-      sel("prov", "Province *", [["", provs.length ? "Choose the province" : "Choose the region first"]].concat(provs.map(function (p) { return [p, title(p)]; })), ' data-pgr="1"' + (provs.length ? "" : " disabled")) +
-      sel("city", "City or municipality *", [["", cities.length ? "Choose the city" : "Choose the province first"]].concat(cities.map(function (c) { return [c, title(c)]; })), cities.length ? "" : " disabled") +
-      '</div><p class="muted small" style="margin:0">Where the client lives or works. Hospitals, clinics and doctors in the proposal are picked from here. Only places with a Maxicare-accredited provider are listed.</p>';
+      sel("region", "Region (optional)", [["", "Choose the region"]].concat(regs.map(function (r) { return [r, REGION_NAME[r] || r]; })), ' data-pgr="1"') +
+      sel("prov", "Province (optional)", [["", provs.length ? "Choose the province" : "Choose the region first"]].concat(provs.map(function (p) { return [p, title(p)]; })), ' data-pgr="1"' + (provs.length ? "" : " disabled")) +
+      sel("city", "City or municipality (optional)", [["", cities.length ? "Choose the city" : "Choose the province first"]].concat(cities.map(function (c) { return [c, title(c)]; })), cities.length ? "" : " disabled") +
+      '</div><p class="muted small" style="margin:0">Optional. Where the client lives or works; if given, the proposal lists accredited hospitals, clinics and doctors there. Only places with a Maxicare-accredited provider are listed.</p>';
   }
   function specPicker() {
     var specs = ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY", "FAMILY MEDICINE", "GENERAL MEDICINE", "GENERAL SURGERY", "E.E.N.T.", "OPHTHALMOLOGY", "OTOLARYNGOLOGY-HEAD AND NECK SURGERY", "DERMATOLOGY", "PSYCHIATRY", "ORTHOPEDIC SURGERY", "UROLOGY", "PHYSICAL MEDICINE AND REHABILITATION", "NEUROSURGERY", "EMERGENCY MEDICINE"];
@@ -252,8 +261,9 @@
   var EMAIL_RE = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]{2,}$/;
   function need(v, msg) { if (v == null || String(v).trim() === "") throw new Error(msg); return String(v).trim(); }
   function readLoc() {
-    if (!PD) throw new Error("Wait for the provider list to load.");
-    return { region: need(G.f.region, "Choose the client's region."), prov: need(G.f.prov, "Choose the client's province."), city: need(G.f.city, "Choose the client's city or municipality.") };
+    if (!G.f.region) return null;
+    if (!PD) throw new Error("Wait for the provider list to load, or clear the location.");
+    return { region: G.f.region, prov: G.f.prov || "", city: (G.f.prov && G.f.city) || "" };
   }
   function generate() {
     G.err = ""; G.warn = [];
@@ -290,7 +300,7 @@
     if (grp) { c.org = need(f.org, "Enter the company or group name."); c.heads = need(f.heads, "Enter how many employees or members to cover."); }
     else { c.heads = G.type === "Individual" ? "1" : need(f.heads, "Enter how many people to cover."); c.ages = need(f.ages, "Enter the ages of the people to cover."); }
     ["position", "industry", "deps", "avgage", "budget", "current", "renewal", "room", "mbl", "mode", "ages"].forEach(function (x) { if (f[x] && !c[x]) c[x] = String(f[x]).trim(); });
-    if (G.co === "Maxicare") { c.near = nearby(c.loc); c.specs = G.specs.slice(); return loadDoctors().then(function () { finish(k, c); }); }
+    if (G.co === "Maxicare" && c.loc) { c.near = nearby(c.loc); c.specs = G.specs.slice(); return loadDoctors().then(function () { finish(k, c); }); }
     finish(k, c); return Promise.resolve();
   }
   function finish(k, c) {
@@ -321,11 +331,12 @@
       "<p>Respectfully yours,<br><br><b>Karla Junesha Luansing</b><br>Health Benefit Consultant, A465132<br>Ask Karla</p>";
   }
   function providersHtml(c) {
-    var n = c.near, h = "<h2>Accredited providers near you</h2><p>Maxicare-accredited providers in and around " + e(title(c.loc.city)) + ", " + e(title(c.loc.prov)) + " (Maxicare list as of " + e(PD.asOf) + "). The full network is open to you nationwide.</p>";
+    var n = c.near; if (!n) return "";
+    var h = "<h2>Accredited providers near you</h2><p>Maxicare-accredited providers in and around " + e(placeName(c.loc)) + " (Maxicare list as of " + e(PD.asOf) + "). The full network is open to you nationwide.</p>";
     ["P", "H", "C", "D"].forEach(function (k) {
       var L = n[k].list; if (!L.length) return;
       h += "<h3>" + KIND[k] + "</h3><ul>" + L.map(function (x) { return "<li>" + e(x.f[1] === "P" ? x.f[0] : title(x.f[0])) + (x.where ? " (" + e(x.where) + ")" : "") + "</li>"; }).join("") + "</ul>";
-      if (n[k].inCity > L.length) h += "<p>…and " + (n[k].inCity - L.length) + " more in " + e(title(c.loc.city)) + ".</p>";
+      if (n[k].inCity > L.length) h += "<p>…and " + (n[k].inCity - L.length) + " more in " + e(c.loc.city ? title(c.loc.city) : placeName(c.loc)) + ".</p>";
     });
     if (DD && c.specs.length) {
       var fac = n.H.list.concat(n.P.list).concat(n.C.list).map(function (x) { return x.i; });
@@ -396,7 +407,7 @@
     function add(l, v) { if (v != null && String(v).trim() !== "") rows.push(["<b>" + l + "</b>", e(v)]); }
     if (c.grp) { add("Company or group", c.org); add("Contact", c.name + (c.position ? ", " + c.position : "")); add("Industry", c.industry); add("Employees or members", c.heads); add("Dependents", c.deps); add("Average age", c.avgage); add("Current HMO", c.current); add("Current plan renews on", c.renewal ? longDate(c.renewal) : ""); }
     else { add("Name", c.name); add("People to cover", c.heads); add("Ages", c.ages); add("Current HMO", c.current); }
-    add("Location", title(c.loc.city) + ", " + title(c.loc.prov)); add("Preferred room", c.room); add("Preferred benefit limit", c.mbl ? peso0(c.mbl) : ""); add("Budget", c.budget ? peso0(c.budget) + (c.grp ? " per head a year" : " a year") : ""); add("Payment mode", c.mode);
+    add("Location", placeName(c.loc)); add("Preferred room", c.room); add("Preferred benefit limit", c.mbl ? peso0(c.mbl) : ""); add("Budget", c.budget ? peso0(c.budget) + (c.grp ? " per head a year" : " a year") : ""); add("Payment mode", c.mode);
     h += tbl(["Details", ""], rows);
     h += "<h2>Next steps</h2><ul><li>I'll prepare the " + e(G.co) + " plan options and rates that fit " + (c.grp ? "your group" : "you") + " and send them within 1 to 2 business days.</li><li>If anything above needs correcting, or you'd like to add " + (c.grp ? "your census (names, birthdates and gender)" : "the birthdates of everyone to be covered") + ", just reply to this email.</li></ul>";
     if (c.near) h += providersHtml(c);
@@ -419,7 +430,7 @@
     if (k === "mxi" || k === "mxf") {
       var fam = k === "mxf";
       h += "<p>Thank you for considering Maxicare. For over 37 years, Maxicare has provided comprehensive healthcare through a network of more than 56,000 accredited doctors and over 1,000 hospitals and clinics nationwide, with customer care open 24/7.</p>" +
-        "<p>Below is your <b>MyMaxicare " + (fam ? "Family" : "Individual") + "</b> proposal" + (fam ? " for your family of " + c.people.length : "") + ", with the fees for all four plans, what is covered, and the accredited hospitals, clinics and doctors near " + e(title(c.loc.city)) + ".</p>";
+        "<p>Below is your <b>MyMaxicare " + (fam ? "Family" : "Individual") + "</b> proposal" + (fam ? " for your family of " + c.people.length : "") + ", with the fees for all four plans" + (c.near ? ", what is covered, and the accredited hospitals, clinics and doctors near " + e(placeName(c.loc)) : " and what is covered") + ".</p>";
     } else {
       h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
     }
@@ -472,9 +483,9 @@
     }
     add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
     if (c.near) {
-      var hosp = c.near.H.list.length, inCity = c.near.H.inCity;
-      add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + title(c.loc.city) + "; nearest listed." : "No accredited hospital in " + title(c.loc.city) + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
-    }
+      var hosp = c.near.H.list.length, inCity = c.near.H.inCity, pl = placeName(c.loc);
+      add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + pl + "; nearest listed." : "No accredited hospital in " + pl + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
+    } else if (o.co === "Maxicare") add("warn", "No location given, so no hospitals, clinics or doctors are listed.");
     var tplOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla Junesha Luansing") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
     add(tplOk ? "ok" : "fail", tplOk ? "Email template has the client's name, Karla's signature and the list of attached files." : "Email template is missing the client's name, the signature or the list of files.");
     add(o.files.length ? "ok" : "warn", o.files.length ? o.files.length + " files to attach for " + o.co + " " + o.type + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." : "No files are set up for " + o.co + " " + o.type + " yet. Attach any files yourself in Outlook.");
