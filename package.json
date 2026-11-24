@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:demo": "VITE_DEMO_MODE=true vite",
     "build": "tsc -b && vite build",
+    "build:demo": "VITE_DEMO_MODE=true VITE_HASH_ROUTER=true tsc -b && VITE_DEMO_MODE=true VITE_HASH_ROUTER=true vite build --base ./ --outDir dist-demo",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test:db": "./supabase/tests/run.sh",

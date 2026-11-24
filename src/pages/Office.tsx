@@ -5,6 +5,9 @@ import { api } from "../lib/api";
 import { buildOfficeLive, type OfficeLive } from "../lib/officeLive";
 
 const REFRESH_MS = 60_000;
+// Same-origin frame. In a sandboxed preview the origin is opaque ("null"),
+// so messages fall back to "*" but are still only accepted from the frame itself.
+const ORIGIN = window.location.origin === "null" ? "*" : window.location.origin;
 
 /**
  * The 3D AI office as the app's home screen. The office runs in a same-origin
@@ -19,7 +22,7 @@ export default function OfficePage() {
   const [note, setNote] = useState<string | null>(null);
 
   const send = useCallback(() => {
-    if (live.current) frame.current?.contentWindow?.postMessage(live.current, window.location.origin);
+    if (live.current) frame.current?.contentWindow?.postMessage(live.current, ORIGIN);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -38,7 +41,7 @@ export default function OfficePage() {
     void refresh();
     const t = window.setInterval(() => void refresh(), REFRESH_MS);
     const onMsg = (ev: MessageEvent) => {
-      if (ev.origin !== window.location.origin || ev.source !== frame.current?.contentWindow) return;
+      if ((ORIGIN !== "*" && ev.origin !== ORIGIN) || ev.source !== frame.current?.contentWindow) return;
       const m = ev.data as { type?: string; path?: string };
       if (m?.type === "z1-office-ready") send();
       if (m?.type === "z1-open" && typeof m.path === "string" && m.path.startsWith("/") && !m.path.startsWith("//")) nav(m.path);
@@ -50,7 +53,7 @@ export default function OfficePage() {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {note && <div className="border-b bg-paper px-4 py-1.5 text-center text-xs text-slate-500">{note}</div>}
-      <iframe ref={frame} title="AI Office" src="/office/index.html?embed=1" onLoad={send}
+      <iframe ref={frame} title="AI Office" src={`${import.meta.env.BASE_URL}office/index.html?embed=1`} onLoad={send}
         className="min-h-[640px] w-full flex-1 border-0" />
     </div>
   );

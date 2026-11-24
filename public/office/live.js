@@ -9,6 +9,7 @@
  */
 (function () {
   "use strict";
+  var ORIGIN = location.origin === "null" ? "*" : location.origin;
   var live = null;
   var lastNow = {};
 
@@ -65,14 +66,14 @@
     if (!el) return;
     ev.preventDefault();
     ev.stopPropagation();
-    parent.postMessage({ type: "z1-open", path: el.getAttribute("data-live-open") }, location.origin);
+    parent.postMessage({ type: "z1-open", path: el.getAttribute("data-live-open") }, ORIGIN);
   }, true);
 
   window.addEventListener("message", function (ev) {
-    if (ev.origin !== location.origin || ev.source !== parent) return;
+    if ((ORIGIN !== "*" && ev.origin !== ORIGIN) || ev.source !== parent) return;
     var m = ev.data;
     if (m && m.type === "z1-live") apply(m);
   });
 
-  if (parent !== window) parent.postMessage({ type: "z1-office-ready" }, location.origin);
+  if (parent !== window) parent.postMessage({ type: "z1-office-ready" }, ORIGIN);
 })();

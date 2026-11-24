@@ -1,4 +1,7 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
+
+/** A shareable demo build (npm run build:demo) has no server rewrites, so it routes with #/paths. */
+const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter;
 import { configMissing } from "./lib/api";
 import { AuthProvider } from "./auth/AuthProvider";
 import { HomeRedirect, RequireAuth, RequirePermission } from "./auth/guards";
@@ -26,7 +29,7 @@ export default function App() {
   }
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <Router>
         <Routes>
           {/* public */}
           <Route path="/login" element={<LoginPage />} />
@@ -62,7 +65,7 @@ export default function App() {
             </Route>
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
     </AuthProvider>
   );
 }
