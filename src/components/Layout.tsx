@@ -1,6 +1,6 @@
 import { KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { isDemo } from "../lib/api";
 import { NAV } from "../lib/nav";
@@ -18,6 +18,7 @@ export function Logo({ light }: { light?: boolean }) {
 export default function Layout() {
   const { access, can, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const fullBleed = useLocation().pathname === "/office";
   // Only pages the user may open are rendered. Route guards and the
   // database block the rest even if someone types the URL.
   const items = NAV.filter((n) => can(n.permission));
@@ -41,7 +42,7 @@ export default function Layout() {
     .map((s) => s[0]!.toUpperCase()).join("");
 
   return (
-    <div className="flex min-h-screen">
+    <div className={fullBleed ? "flex h-screen overflow-hidden" : "flex min-h-screen"}>
       <aside className={cx(
         "fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy px-4 py-5 transition-transform lg:static lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full",
@@ -80,7 +81,7 @@ export default function Layout() {
       </aside>
       {open && <div className="fixed inset-0 z-20 bg-black/30 lg:hidden" onClick={() => setOpen(false)} />}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b bg-white px-4 py-3 lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="rounded p-1.5 hover:bg-slate-100"><Menu className="h-5 w-5" /></button>
           <Logo />
@@ -101,7 +102,7 @@ export default function Layout() {
             </Link>
           </div>
         )}
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main className={fullBleed ? "flex min-h-0 w-full flex-1 flex-col" : "mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8"}>
           <Outlet />
         </main>
       </div>

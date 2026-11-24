@@ -7,6 +7,17 @@ Ask Karla's office app. Built so far:
 2. **Billing & SOA, the collections tracker**: every SOA from release to client payment, provider receipt
    and 2307, commission payout, and Karla's receipt to the provider (see below).
 
+3. **AI Office home screen**: the 3D office (`public/office/`) is the first page after sign-in. Nina and
+   Sol work from the real SOA tracker, and the office's "From your trackers" list opens the matching page.
+
+## AI Office
+
+`public/office/index.html` is the 3D office from the prototype, served as a static page and shown in a
+same-origin frame by `src/pages/Office.tsx`. Every minute the app sends it live work built by
+`src/lib/officeLive.ts`; `public/office/live.js` swaps the named agents' sample work for it. Only people with
+`billing.view` get SOA details in the office. The other 36 agents still run on sample work until their
+modules are built (follow-ups, quotes, proposals).
+
 ## Billing & SOA
 
 One row per SOA. Its stage is worked out by the database from the dates filled in, so nobody moves cards by hand:

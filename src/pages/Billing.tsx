@@ -3,6 +3,7 @@ import {
   PhoneCall, Plus, Search, Trash2, Unlink,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import {
   Alert, Badge, Button, Drawer, Field, Input, Modal, PageHeader, Select, Spinner, Toggle, cx, downloadCsv, relativeTime,
@@ -22,11 +23,12 @@ import { PROVIDERS } from "../lib/types";
  */
 export default function BillingPage() {
   const { can } = useAuth();
-  const [tab, setTab] = useState<"soas" | "payouts">("soas");
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<"soas" | "payouts">(params.get("tab") === "payouts" ? "payouts" : "soas");
   const [soas, setSoas] = useState<SoaRow[] | null>(null);
   const [payouts, setPayouts] = useState<DisbursementRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openSoa, setOpenSoa] = useState<string | null>(null);
+  const [openSoa, setOpenSoa] = useState<string | null>(params.get("soa"));
   const [openPayout, setOpenPayout] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partial<SoaRow> | null>(null);
   const [importing, setImporting] = useState(false);
