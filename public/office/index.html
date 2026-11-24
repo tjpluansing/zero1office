@@ -658,6 +658,16 @@ function buildFloor1(){
   box(F,{x:12,y:1.75,w:3.2,d:.3,h:.95,c:"#1E3A8A"});box(F,{x:12,y:2.05,w:3.2,d:.7,h:.42,c:"#2B59A8"});box(F,{x:12,y:6.7,w:3.2,d:.3,h:.95,c:"#1E3A8A"});box(F,{x:12,y:5.95,w:3.2,d:.75,h:.42,c:"#2B59A8"});
   box(F,{x:12.6,y:3.9,w:2,d:.9,h:.35,c:"#E9D3AE"});[12,13,14].forEach(x=>{spot(F,"lounge",x,2,"sit");spot(F,"lounge",x,6,"sit")});
   box(F,{x:10.15,y:3.3,w:.6,d:2.3,h:.45,c:"#6B4226",cap:"#8B5E34"});box(F,{x:10.3,y:3.45,w:.14,d:2,z:.45,h:1.15,c:"#111827",pat:"tv",block:false});box(F,{x:10.35,y:3.6,w:.3,d:.4,z:.45,h:.08,c:"#1F2937",block:false});
+  // massage chairs, facing into the room
+  [16,17,18].forEach(tx=>{const ty=2;
+    box(F,{x:tx+.1,y:ty+.08,w:.8,d:.8,h:.3,c:"#1F2937"});
+    box(F,{x:tx+.24,y:ty+.84,w:.52,d:.44,h:.24,c:"#2A1E18",block:false});
+    box(F,{x:tx+.16,y:ty+.1,w:.68,d:.7,z:.3,h:.14,c:"#5B3A29",block:false});
+    box(F,{x:tx+.1,y:ty+.02,w:.8,d:.28,z:.3,h:.95,c:"#4A2F22",block:false});
+    box(F,{x:tx+.16,y:ty+.04,w:.68,d:.3,z:1.25,h:.18,c:"#6B4632",block:false});
+    box(F,{x:tx+.02,y:ty+.2,w:.16,d:.68,z:.3,h:.36,c:"#2A1E18",cap:"#D3A13B",block:false});
+    box(F,{x:tx+.82,y:ty+.2,w:.16,d:.68,z:.3,h:.36,c:"#2A1E18",cap:"#D3A13B",block:false});
+    spot(F,"massage",tx,ty,"sit",0,1)});
   shelf(F,17.5,.08,1.8,.45);plant(F,10.5,.5);plant(F,19.5,8.5);
   // pantry
   box(F,{x:21,y:.15,w:.9,d:.8,h:1.9,c:"#E5E7EB"});box(F,{x:22.2,y:1.15,w:3.6,d:.8,h:.92,c:"#CBD5E1"});box(F,{x:22.5,y:1.3,w:1.1,d:.5,z:.92,h:.06,c:"#1F2937",block:false});cyl(F,{x:22.8,y:1.55,r:.14,h:.16,c:"#94A3B8",block:false});cyl(F,{x:23.35,y:1.55,r:.12,h:.1,c:"#F97316",block:false});box(F,{x:24.6,y:1.35,w:.8,d:.4,z:.92,h:.04,c:"#D9B98C",block:false});box(F,{x:22.2,y:.04,w:3.6,d:.26,h:1.5,c:"#E2E8F0",block:false});cyl(F,{x:27.6,y:.7,r:.25,h:1.1,c:"#BFDBFE",block:true});
@@ -807,7 +817,7 @@ function breakSpot(kind){const F=FLOORS[1];return pick(F.spots[kind])}
 function freeSpot(f,key){const F=FLOORS[f],l=F.spots[key]||[];const taken=A.filter(b=>b.floor===f).map(b=>Math.floor(b.x)+","+Math.floor(b.y));const fr=l.filter(s=>!taken.includes(s.x+","+s.y));return fr.length?pick(fr):pick(l)}
 
 const CHAT=[["Quick question on the Northpoint file?","Sure, sending it now."],["Can you double-check these numbers?","On it."],["The client said yes!","Nice work!"],["Need your notes by 3 PM.","You'll have them."],["Which plan fits a 25-person clinic?","Plus, by a mile."],["Renewal list is ready.","Thanks, got it."]];
-const BREAK_LINES={cafe:["Coffee time ☕","One more cup","Ensaymada, anyone?"],lounge:["Five-minute reset","Ahh, comfy"],pantry:["Lunch time!","Merienda break","This adobo is good"],garden:["Fresh air!","Look at the koi!","Nice day out"],gym:["One more set 💪","Leg day!","Cardio time","Feeling strong","Stretch it out"],play:["New high score!","Nice shot!","Rematch?","One more game"]};
+const BREAK_LINES={cafe:["Coffee time ☕","One more cup","Ensaymada, anyone?"],lounge:["Five-minute reset","Ahh, comfy"],massage:["Ahh, massage time","Right on the shoulders","Best chair in the office","Five more minutes"],pantry:["Lunch time!","Merienda break","This adobo is good"],garden:["Fresh air!","Look at the koi!","Nice day out"],gym:["One more set 💪","Leg day!","Cardio time","Feeling strong","Stretch it out"],play:["New high score!","Nice shot!","Rematch?","One more game"]};
 
 function decide(a){
   if(a.e.staff){staffDecide(a);return}
@@ -826,7 +836,7 @@ function decide(a){
   if(r<.72){const mates=A.filter(b=>b!==a&&b.e.d===a.e.d&&b.st==="working"&&b.seat);if(mates.length){const m=pick(mates),c=pick(CHAT);
       const tgt=nearFree(FLOORS[m.seat.f],m.seat.x,m.seat.y);
       setPlan(a,[{t:"go",f:m.seat.f,x:tgt.x,y:tgt.y},{t:"stay",dur:4.5,say:c[0],fn:()=>{setTimeout(()=>say(m,c[1]),1700);log(a,"Checked in with "+m.e.n)}}].concat(seatSteps(a),[{t:"work",dur:rnd(10,18)}]));return}}
-  if(r<.9&&opt("breaks")){const kind=pick(["cafe","cafe","lounge","pantry","pantry","garden","play","play","gym","gym"]);const s=freeSpot(1,kind);
+  if(r<.9&&opt("breaks")){const kind=pick(["cafe","cafe","lounge","massage","massage","pantry","pantry","garden","play","play","gym","gym"]);const s=freeSpot(1,kind);
     setPlan(a,[{t:"go",f:1,x:s.x,y:s.y},faceStep(s),{t:"stay",dur:rnd(9,16),pose:s.pose,st:"break",say:pick(BREAK_LINES[kind]),fn:()=>{log(a,"Took a short break");serve(kind,a);gymGo(a)}}].concat(seatSteps(a),[{t:"work",dur:rnd(10,18)}]));return}
   if(a.home===3||Math.random()<.5){const s=freeSpot(3,"reports");setPlan(a,[{t:"go",f:3,x:s.x,y:s.y},{t:"stay",dur:8,pose:"sit",say:"Checking the scoreboard…",fn:()=>log(a,"Read the team scoreboard")}].concat(seatSteps(a),[{t:"work",dur:12}]));return}
   setPlan(a,seatSteps(a).concat([{t:"work",dur:rnd(9,20)}]));
@@ -1227,7 +1237,7 @@ function vHome(){
   h+='<div class="rep"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Kara\'s daily report</b><button class="btn sm" data-act="report">'+(S.reportOpen?"Hide":"Preview")+'</button></div><span class="muted small">Every day at 7:00 PM · in '+reportIn()+'</span>'+
     (S.reportOpen?'<ul>'+DEPT_ROOMS2.map(r=>{const ppl=A.filter(a=>a.e.d===r.dept);return '<li>'+esc(r.dept)+': '+ppl.reduce((s,a)=>s+a.done,0)+' done'+(pendingFor(r.dept)?', '+pendingFor(r.dept)+' waiting on you':'')+'</li>'}).join("")+'</ul>':'')+'</div>';
   h+='<button class="row" data-act="inbox"><span class="t"><b>Your inbox</b><small>Finished work waiting for you</small></span><span class="chip c-meeting">'+inb+' to review</span></button>';
-  h+='<button class="row" data-act="break"><span class="t"><b>Break area</b><small>Café, lounge, pantry, garden, entertainment room and gym</small></span><span class="chip c-break">'+br+' on a break · '+nj+' no job</span></button>';
+  h+='<button class="row" data-act="break"><span class="t"><b>Break area</b><small>Café, lounge with massage chairs, pantry, garden, entertainment room and gym</small></span><span class="chip c-break">'+br+' on a break · '+nj+' no job</span></button>';
   h+='<button class="row" data-act="board"><span class="t"><b>Board room</b><small>'+(S.meeting?esc(S.meeting.title)+' with '+S.meeting.ids.map(i=>byId(i).e.n).join(", "):'No meeting right now')+'</small></span>'+(S.meeting?chip("meeting"):'')+'</button>';
   h+='<h3>People</h3>'+A.filter(a=>a.e.human).map(a=>'<button class="row" data-act="agent" data-id="'+a.id+'">'+face(a.id)+'<span class="t"><b>'+esc(a.e.n)+(a.e.you?' (you)':'')+'</b><small>'+esc(a.e.r)+' · '+esc(a.st==="break"?"Coffee break":a.st==="moving"?"Walking the office":a.task.t)+'</small></span></button>').join("");
   h+='<h3>Teams</h3>'+depts().map(d=>{const ppl=A.filter(a=>a.e.d===d),w=ppl.filter(a=>a.st==="working").length,n=pendingFor(d);
