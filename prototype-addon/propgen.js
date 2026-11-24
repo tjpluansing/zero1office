@@ -367,38 +367,135 @@
         plans.map(function (p) { return ["<b>" + p.n + "</b>"].concat(p.pecD.map(peso0)).concat([peso0(p.pecN), "100% of MBL"]); })) +
       "<p>Dreaded-condition limits increase each year when the member's loss ratio is below 50%.</p>";
   }
+  /* ---------- the MyMaxicare proposal, in the layout of Karla's template (Paolo, 2026-11-25) ----------
+     Built as blocks: the PDF pages them A4 with the Maxicare header, and "BREAK" starts a new page.
+     Order: cover letter, MyMaxicare Healthcare Benefits Summary (1-9), plan and fees, riders, then
+     Accredited providers near you at the end. */
+  var PDF_IMG = { logo: "files/pdf/maxicare-logo.png", banner: "files/pdf/consultant-banner.jpg", sig: "files/pdf/karla-signature.jpg", bear: "files/pdf/maxicare-bear.png" };
+  function ageLong(a) { return a.y === 0 ? "Under 1 year old" : a.y + (a.y === 1 ? " year old" : " years old"); }
+  function chk(items, two) {
+    if (!two) return '<ul class="ck">' + items.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>";
+    var h = Math.ceil(items.length / 2);
+    return '<div class="two">' + chk(items.slice(0, h)) + chk(items.slice(h)) + "</div>";
+  }
+  function sect(n, t) { return '<p class="sh">' + n + ".&nbsp;&nbsp;" + t + "</p>"; }
+  var MX_BENEFITS = [
+    sect(1, "In-patient care") + chk(["Room and Board Accommodation", "Use of Operating Room, Intensive Care Unit (ICU), Isolation Room and Recovery Room", "Professional fees of attending Physicians, Surgeons, Anesthesiologist and Cardio-pulmonary Specialist (for clearance before surgery and cardiac monitoring during surgery)", "Standard nursing services", "Medicines for In-patient use", "Anesthesia and its administration", "Blood product transfusions and intravenous (IV) fluids, including blood screening and cross matching", "X-ray, laboratory examinations, diagnostic tests, and therapeutic procedures incidental to confinement", "Dressings, conventional casts (plaster of Paris) and sutures", "Oxygen and its administration", "Standard admission kit", "All other items directly related in the medical management of the patient, as deemed medically necessary by the attending affiliated physician"], true),
+    sect(2, "Out-patient care") + chk(["Consultations (Free unlimited consultations at Maxicare's Primary Care Centers)", "Treatment of minor injuries", "X-ray, laboratory examinations, routine, diagnostic and therapeutic procedures", "Minor surgery not requiring confinement", "Eye laser therapy for retinal tear / hole / detachment and glaucoma", "Sclerotherapy (for varicose veins)", "Electrocauterization of skin lesions such as plantar warts, flat warts, periungual warts, filiform warts, and molluscum contagiosum, in any part of the body", "Allergy testing", "Tuberculin test", "Speech Therapy (For Stroke patients only)"], true),
+    sect(3, "Emergency Care") + '<p class="ctr u">Affiliated Hospital</p>' + chk(["Doctor's services", "Emergency Room fees", "Medicines used for immediate relief and during treatment", "Oxygen, intravenous (IV) fluids and blood products", "Dressings, conventional casts (plaster of Paris) and sutures", "X-rays, laboratory, diagnostic examinations, and other medical services related to the emergency treatment of the patient", "Initial treatment of animal bites shall be covered for the first twenty-four (24) hours from the time of bite subject to MBL (except cost of vaccines)"], true),
+    '<p class="ctr u">Non-Affiliated Hospital</p><p><b><i>Within the Philippines</i></b><br>Reimbursement up to 80% of the actual hospital bills and 80% of the Professional fees (based on Maxicare rates) incurred during the first twenty-four (24) hours of treatment up to PHP 30,000.00 / availment / member.</p>' +
+      "<p><b><i>Areas without accredited hospitals within the Philippines</i></b><br>Reimbursement of 100% actual costs of the total hospital bills and Professional fees (based on Maxicare rates) up to PHP 30,000.00 / availment / member.</p>" +
+      "<p><b><i>Outside the Philippines</i></b><br>Maxicare shall reimburse 100% actual costs up to PHP 30,000.00 / availment / member<br>Ambulance Service up to PHP 2,500.00 per conduction</p>" +
+      "<p><b>Ambulance Service</b><br>Maxicare will cover road ambulance service for transfers from an affiliated hospital to another affiliated hospital up to MBL and Php2,500 per conduction if it is from a non-affiliated Hospital to an affiliated Hospital (on reimbursement basis).</p>",
+    sect(4, "Preventive Care") + chk(["Passive and active vaccines for treatment of tetanus and animal bites shall be covered up to Php18,000 per member per year", "Periodic monitoring of health problems", "Health education and counseling on diets and exercise", "Health habits &amp; family planning counseling"]),
+    sect(5, "Annual Check Up") + "<p style=\"margin:0 0 2px 18px\">Clinic-based Annual Check-Up, consist of five (5) basic routines:</p>" + chk(["History and Physical Exam", "Complete Blood Count (CBC)", "Routine Urinalysis", "Routine Fecalysis", "Chest X-ray (PA and Lateral X-ray)"], true) +
+      "<p>The ACU however, may only be availed within the contract period after (1) payment of at least six (6) month worth of membership, and (2) must be a member of at least six (6) months starting from the effectivity date. Members must notify Maxicare's Customer Care Department (CCD) at least one (1) month prior to the preferred schedule. Any request for rescheduling or change of venue must be in writing and shall be allowed only once provided request was forwarded to CCD at least one (1) week prior to the original ACU schedule. Otherwise, ACU entitlement shall be forfeited.</p>",
+    sect(6, "Dental Care (Optional)") + chk(["Oral Consultation/ Examination", "Once a year Oral Prophylaxis", "Simple Tooth Extraction", "Oral Incision and drainage", "Unlimited Temporary Fillings, as needed", "Simple Repair and Adjustment of Dentures", "Recementation of Jacket Crowns, Bridges, Inlay and Onlay", "Palliative Treatment of Simple Mouth Sores and Blisters", "Desensitization of Hypersensitive Teeth – up to 2 Teeth per year", "Permanent Fillings – up to 2 Teeth per year", "Gum Treatment for Cases Like Inflammation or Bleeding", "Emergency Dental Treatment"], true),
+    sect(7, "Additional Benefits") + chk(["Life Insurance coverage with Accidental Death, Dismemberment &amp; Disablement up to Php50,000", "Initial Treatment within 24 hours from time of bite of Animal bites - subject to MBL (except cost of vaccines)", "Succeeding treatment after 24 hours from time of bite of Animal bites - subject to MBL (except cost of vaccines)", "Vaccines for treatment of tetanus and animal bites (including administration fee but excluding ER Fees) - up to P18,000/member/year (shared limit for OP and IP)", "Chronic Dermatoses - Consultations only", "Scoliosis including necessary procedures, except physical therapy sessions, whether congenital, pre-existing, developmental or acquired - Up to P20,000/member/year (shared limit for OP and IP)<br><i>Note: Physical Therapy sessions shall form part of the Physical therapy/ Occupational therapy limits</i>", "Congenital Conditions except physical therapy sessions and developmental disorders - up to P20,000/member/year (shared limit for OP and IP)<br><i>Note: Physical Therapy sessions shall form part of the Physical therapy/ Occupational therapy limits</i>"], true),
+    sect(8, "Maxicare International Assist Program") + '<p class="u" style="margin:0 0 2px 18px">Medical Emergency Assistance</p>' + chk(["Emergency Medical Evacuation", "Emergency Medical Repatriation", "Medical Referral", "Medical Monitoring", "Prescription Assistance", "Foreign Hospital", "Admission Assistance", "Return of Mortal Remains"], true) +
+      '<p class="u" style="margin:6px 0 2px 18px">Non-Medical Emergency Assistance</p>' + chk(["Compassionate Visit", "Care of Minor Children", "Emergency Message Transmission", "Lost Luggage or Document Assistance", "Legal and Interpreter Referrals", "Pre-Trip Information", "Mobile App Services"], true),
+    sect(9, "Pre-Existing Conditions Coverage") + "<p><b>Pre-Existing Condition</b> is an illness or disease that exists prior to the effective date of the member's coverage to Maxicare, for MYMAXICARE, within the first 12months from the effective date.</p>" +
+      chk(["The member has obtained professional advice or treatment prior to the effective date of member's coverage", "The illness or injury was an evident upon medical examination in connection with the member's applications", "The natural history of the illness or injury can be clinically determined to have started prior to the effective date of coverage whether the member is aware of it or not."]) +
+      "<p><b>Acquired Condition</b> is an illness or injury considered and can be clinically determined to have manifested/occurred after the effective date of Member's coverage. For MyMaxicare accounts, Acquired Condition is any condition that was not diagnosed, or for which no medical care or advice was rendered, prior to or within 12 months from date of effectivity.</p>" +
+      "<p><b>Dreaded Disease/Condition</b> is any condition that is considered to be chronic, progressive, life-threatening and which may entail lifelong therapy wherein complete cure cannot be ensured.</p>",
+  ];
+  function pecTables() {
+    var P = PLANS;
+    var h = '<p style="margin-top:8px">ENHANCED COVERAGE FOR DREADED and NON-DREADED CONDITIONS</p>' +
+      '<table class="pt"><tr><th class="dk" colspan="7">DREADED PRE-EXISTING CONDITIONS (PEC)</th></tr><tr><th rowspan="2">PLAN TYPE</th><th colspan="6">YEARS OF MEMBERSHIP</th></tr>' +
+      "<tr><th>1ST YEAR</th><th>2ND YEAR</th><th>3RD YEAR</th><th>4TH YEAR</th><th>5TH YEAR</th><th>6TH YEAR &amp; UP</th></tr>" +
+      P.map(function (p) { return "<tr><td><b>" + p.n + "</b></td>" + p.pecD.map(function (v) { return '<td class="c">' + peso0(v) + "</td>"; }).join("") + "</tr>"; }).join("") + "</table>";
+    h += '<div class="two" style="align-items:start"><table class="pt"><tr><th class="dk" colspan="3">NON-DREADED PRE-EXISTING CONDITIONS (PEC)</th></tr><tr><th rowspan="2">PLAN TYPE</th><th colspan="2">YEARS OF MEMBERSHIP</th></tr><tr><th>1ST YEAR</th><th>2ND YEAR ONWARDS</th></tr>' +
+      P.map(function (p, i) { return "<tr><td><b>" + p.n + '</b></td><td class="c">' + peso0(p.pecN) + "</td>" + (i ? "" : '<td class="c" rowspan="' + P.length + '"><b>100% MBL</b></td>') + "</tr>"; }).join("") + "</table>" +
+      '<div class="note">Note that if the member has:' + chk(["Below 50% Loss Ratio, an increase in coverage will take effect.", "50% and up Loss Ratio, coverage will remain the same from previous year."]) + "</div></div>";
+    h += '<table class="pt" style="width:50%"><tr><th class="dk" colspan="2">ACQUIRED DREADED and NON-DREADED CONDITIONS</th></tr><tr><th rowspan="2">PLAN TYPE</th><th>YEARS OF MEMBERSHIP</th></tr><tr><th>1ST YEAR ONWARDS</th></tr>' +
+      P.map(function (p, i) { return "<tr><td><b>" + p.n + "</b></td>" + (i ? "" : '<td class="c" rowspan="' + P.length + '"><b>100% MBL</b></td>') + "</tr>"; }).join("") + "</table>";
+    return h;
+  }
+  var PLAN_TINT = ["#F8C9CB", "#C9DCF3", "#E9DFC4", "#E3DDF0"];
   function maxicareEmail(k, c) {
     var fam = k === "mxf", P = c.plans, idx = P.map(function (p) { return PLANS.indexOf(p); });
-    var h = "<h1>MyMaxicare " + (fam ? "Family" : "Individual") + " proposal</h1><p>Prepared for " + e(c.name) + (fam ? " and family (" + c.people.length + " members)" : "") + " on " + e(longDate(c.on)) + ". Fees are based on " + (fam ? "each member's" : "your") + " age today.</p>";
-    h += "<h2>Plans</h2>" + tbl(["", ""].slice(0, 1).concat(P.map(function (p) { return p.n; })), [
-      ["Maximum benefit limit (per illness, per year)"].concat(P.map(function (p) { return peso0(p.mbl); })),
-      ["Room and board"].concat(P.map(function (p) { return p.room; })),
-    ]);
-    var totals = c.modes.map(function () { return idx.map(function () { return 0; }); });
-    var rows = [], calc = [];
+    var totals = c.modes.map(function () { return idx.map(function () { return 0; }); }), calc = [];
     c.people.forEach(function (m) {
-      calc.push({ name: m.name, y: m.age.y, b: bracketOf(m.age), fees: c.modes.map(function (mo) { return idx.map(function (pi) { return fee(c.table, bracketOf(m.age), pi, mo); }); }) });
-      var b = bracketOf(m.age);
-      c.modes.forEach(function (mo, mi) {
-        rows.push([(mi === 0 ? "<b>" + e(m.name) + "</b><br>" + e(ageText(m.age)) + " (" + BRACKETS[b] + ")" : ""), MODE_NAME[mo]].concat(idx.map(function (pi, j) { var v = fee(c.table, b, pi, mo); totals[mi][j] += v; return peso0(v); })));
-      });
+      var b = bracketOf(m.age), fees = c.modes.map(function (mo) { return idx.map(function (pi) { return fee(c.table, b, pi, mo); }); });
+      fees.forEach(function (row, mi) { row.forEach(function (v, j) { totals[mi][j] += v; }); });
+      calc.push({ name: m.name, y: m.age.y, b: b, age: m.age, fees: fees });
     });
-    if (fam) c.modes.forEach(function (mo, mi) { rows.push([mi === 0 ? "<b>Total for the family</b>" : "", "<b>" + MODE_NAME[mo] + "</b>"].concat(totals[mi].map(function (v) { return "<b>" + peso0(v) + "</b>"; }))); });
-    h += "<h2>Membership fees</h2>" + tbl(["Member", "Payment mode"].concat(P.map(function (p) { return p.n; })), rows);
-    h += "<p>Quarterly payment is subject for approval. " + (fam ? "Dependents may take the same plan as the principal or one plan lower; the table shows everyone on the same plan." : "") + "</p>";
-    if (c.riders.length) {
-      h += "<h3>Optional riders" + (fam ? " (per member)" : "") + "</h3>" + tbl(["Rider"].concat(c.modes.map(function (m) { return MODE_NAME[m]; })).concat(["Note"]),
-        c.riders.map(function (r) { return [r.n].concat(c.modes.map(function (m) { return peso0(r.fee[m]); })).concat([r.note]); }));
-      if (fam) h += "<p>Each member may add or skip the dental rider.</p>";
-      h += "<p>Critical Illness and Daily Hospital Cash become built in from the third year of membership.</p>";
+    var B = [];
+    // 1. cover letter (Karla's template, word for word)
+    B.push('<div class="letter"><p>' + e(longDate(c.on)) + "</p><p>Dear " + e(c.name) + ",</p><p>I hope this email finds you well and in good health.</p>" +
+      "<p>For over 37 years, Maxicare has continued its legacy of providing the most comprehensive healthcare benefits through our wide Network of Medical Providers nationwide, composed of 56,000 affiliated Specialists, Fellows, and Diplomats, and more than 1,000 hospitals and clinics nationwide; with our excellent delivery system through superior Customer Service, highlighted by a call center that's accessible 24 hours a day, seven days a week.</p>" +
+      "<p>Driven by its vision to serve and provide value to its customers, Maxicare shall remain passionate and dedicated to its mission of helping people achieve a peace of mind while giving the finest healthcare service so they may live their best lives.</p>" +
+      "<p>Our HMO (<i>Health Maintenance Organization</i>) covers Inpatient, Outpatient, Emergency, Dental, Life/Accidental Death &amp; Dismemberment, Annual check-up, and other additional benefits. And we are also the first HMO that covers COVID-19 related cases. We have different solutions that can cater to your employee's HMO requirements.</p>" +
+      "<p>Please see the attached summary of healthcare benefits plans that we have, and I will be happy to discuss our products and programs in greater detail and how we may link up for an efficient and cost-effective administration of your employee health care requirements at your most convenient time.</p>" +
+      '<p>Should you have questions, please feel free to call me at <b>0977-217-6388</b> or email me at <a href="mailto:karlaluansing.maxicare@gmail.com">karlaluansing.maxicare@gmail.com</a>.</p>' +
+      "<p>I hope to hear from you soon and looking forward to being your trusted Employee Benefits Solutions Partner.</p>" +
+      '<p style="margin-bottom:0">Respectfully Yours,</p><img class="sig" src="' + PDF_IMG.sig + '" alt="Karla Luansing signature"><p>Karla Junesha Luansing<br>Health Benefit Consultant, A465132</p></div>');
+    B.push("BANNER", "BREAK");
+    // 2. MyMaxicare Healthcare Benefits Summary
+    MX_BENEFITS.forEach(function (x) { B.push(x); });
+    B.push(pecTables(), "BREAK");
+    // 3. plan and membership fees
+    var cols = P.length + 1;
+    var plan = "<p>This is a full HMO program offering tailored plans with a fixed set of benefits, suitable for individuals and families. It covers extensive benefits for in-patient, out-patient, emergency and preventive care, plus optional dental plan and added features.</p>" +
+      '<table class="ft"><colgroup><col style="width:24%">' + P.map(function () { return "<col>"; }).join("") + "</colgroup>" +
+      '<tr><td class="lb">AGE ELIGIBILITY:</td><td colspan="' + P.length + '">Principal/Dependent(s): 15 days old – 60 years old<br><i>Note: 15 days old – 17 years old with appointed Guardian</i></td></tr>' +
+      '<tr><td class="lb">RENEWAL AGE:</td><td colspan="' + P.length + '"><b>Principal</b>: Up to 65 years old<br><b>Dependent(s)</b>: Up to 65 years old with renewing principal</td></tr>' +
+      '<tr><td class="lb">PLAN TYPE:</td>' + idx.map(function (pi) { return '<td class="c" style="background:' + PLAN_TINT[pi] + '"><b>' + PLANS[pi].n + "</b></td>"; }).join("") + "</tr>" +
+      '<tr><td class="lb">MAXIMUM BENEFIT LIMIT:<br><span style="font-weight:400">(per illness per year)</span></td>' + idx.map(function (pi) { return '<td class="c" style="background:' + PLAN_TINT[pi] + '">' + (PLANS[pi].mbl / 1000) + "K</td>"; }).join("") + "</tr>" +
+      '<tr><td class="lb">ROOM &amp; BOARD:</td>' + idx.map(function (pi) { return '<td class="c" style="background:' + PLAN_TINT[pi] + '">' + PLANS[pi].room + "</td>"; }).join("") + "</tr>" +
+      '<tr><td class="lb">TERMS OF PAYMENT:</td><td class="c" colspan="' + P.length + '">Annual, Semi-Annual, and Quarterly</td></tr>';
+    var MODE_HEAD = [["ANNUAL MEMBERSHIP FEES (approx.)", "#C00000"], ["SEMI-ANNUAL MEMBERSHIP FEES (approx.)", "#1F3FA6"], ["QUARTERLY MEMBERSHIP FEES (approx.) – SUBJECT FOR APPROVAL", "#7030A0"]];
+    c.modes.forEach(function (mo, mi) {
+      plan += '<tr class="gap"><td colspan="' + cols + '"></td></tr><tr><td class="mh" colspan="' + cols + '" style="color:' + MODE_HEAD[mo][1] + '">' + MODE_HEAD[mo][0] + "</td></tr>";
+      calc.forEach(function (m) {
+        plan += '<tr><td class="r">' + (fam ? e(m.name) + ", " : "") + e(ageLong(m.age).toLowerCase().replace(/^u/, "U")) + "</td>" + m.fees[mi].map(function (v, j) { return '<td class="c" style="background:' + PLAN_TINT[idx[j]] + '">' + peso0(v) + "</td>"; }).join("") + "</tr>";
+      });
+      if (fam) plan += '<tr><td class="r"><b>Total for the family</b></td>' + totals[mi].map(function (v, j) { return '<td class="c" style="background:' + PLAN_TINT[idx[j]] + '"><b>' + peso0(v) + "</b></td>"; }).join("") + "</tr>";
+    });
+    plan += "</table>";
+    if (fam) plan += '<p class="small">Fees are per member based on age today. Dependents may take the same plan as the principal or one plan lower; the table shows everyone on the same plan.</p>';
+    B.push(plan);
+    B.push('<table class="rt"><tr><th>RIDERS</th><th>Year 1 &amp; 2</th><th>Year 3 Onwards</th></tr>' +
+      "<tr><td><b>Group Life ADD&amp;D</b></td><td>₱ 50K (BUILT-IN Coverage)</td><td>₱ 100K (BUILT-IN Coverage)</td></tr>" +
+      "<tr><td><b>Standard Dental Benefit</b></td><td>(Optional, Separate Fee)</td><td>(Optional, Separate Fee)</td></tr>" +
+      "<tr><td><b>Critical Illness up to 300K</b></td><td>₱ 300K (Optional, Separate Fee)</td><td>₱ 300K (BUILT-IN Coverage)</td></tr>" +
+      "<tr><td><b>Daily Hospital Cash Benefit of Php 500</b></td><td>₱ 500 (Optional, Separate Fee)</td><td>₱ 500 (BUILT-IN Coverage)</td></tr></table>");
+    B.push('<table class="rt"><tr><th>RIDERS\' FEE' + (fam ? " (per member)" : "") + "</th>" + c.modes.map(function (m) { return "<th>" + ["Annual", "Semi-Annual", "Quarterly"][m] + "</th>"; }).join("") + "</tr>" +
+      [["Standard Dental Benefit", RIDERS[0]], ["Critical Illness up to 300K", RIDERS[1]], ["Daily Hospital Cash Benefit of Php 500", RIDERS[2]]].map(function (r) {
+        return "<tr><td><b>" + r[0] + "</b></td>" + c.modes.map(function (m) { return "<td>₱ " + r[1].fee[m].toLocaleString("en-PH") + "</td>"; }).join("") + "</tr>"; }).join("") + "</table>");
+    // 4. accredited providers near the client, at the end (Paolo, 2026-11-25)
+    var near = providerBlocks(c); if (near.length) B.push("BREAK");
+    near.forEach(function (x) { B.push(x); });
+    B.push("BANNER");
+    return { subject: "Maxicare " + (fam ? "Family" : "Individual") + " Plan Proposal", blocks: B, proposal: blocksHtml(B), total: fam ? totals : null, calc: calc, modes: c.modes, idx: idx, table: c.table, fam: fam };
+  }
+  // The same providers list as before, cut into small blocks so the PDF can page it.
+  function providerBlocks(c) {
+    var n = c.near; if (!n) return [];
+    var out = ['<h2 class="ph2">Accredited providers near you</h2><p>Maxicare-accredited providers in and around ' + e(placeName(c.loc)) + " (Maxicare list as of " + e(PD.asOf) + "). The full network is open to you nationwide.</p>"];
+    function list(head, items, tail) {
+      for (var i = 0; i < items.length; i += 6) out.push((i ? "" : "<h3>" + head + "</h3>") + '<ul class="pl">' + items.slice(i, i + 6).map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>");
+      if (tail) out.push("<p>" + tail + "</p>");
     }
-    h += benefitsHtml() + pecHtml(P);
-    h += "<h2>Eligibility</h2><ul><li>Principal and dependents: 15 days to 60 years old. Ages 15 days to 17 years need an appointed guardian.</li><li>Renewal: up to 65 years old" + (fam ? " (dependents renew with the principal)" : "") + ".</li>" + (fam ? "<li>Children and siblings: up to 21 years 5 months.</li>" : "") + "</ul>";
-    h += "<h2>What to prepare</h2><ul>" + (fam
-      ? "<li>Completed MyMaxicare application form</li><li>Principal: government-issued ID; birth certificate if single, single parent, widowed, annulled, divorced or separated; marriage certificate if married</li><li>Adult dependents: valid government ID with birthdate (parents); marriage certificate (spouse)</li><li>Minor dependents: birth certificate</li><li>Foreign applicants: ACR or SRRV</li>"
-      : "<li>Completed MyMaxicare application form</li><li>Government-issued ID (birth certificate for minors)</li><li>Foreign applicants: ACR or SRRV</li>") + "</ul>";
-    h += providersHtml(c);
-    return { subject: "Maxicare " + (fam ? "Family" : "Individual") + " Plan Proposal", proposal: h, total: fam ? totals : null, calc: calc, modes: c.modes, idx: idx, table: c.table, fam: fam };
+    ["P", "H", "C", "D"].forEach(function (k) {
+      var L = n[k].list; if (!L.length) return;
+      list(KIND[k], L.map(function (x) { return e(x.f[1] === "P" ? x.f[0] : title(x.f[0])) + (x.where ? " (" + e(x.where) + ")" : ""); }),
+        n[k].inCity > L.length ? "…and " + (n[k].inCity - L.length) + " more in " + e(c.loc.city ? title(c.loc.city) : placeName(c.loc)) + "." : "");
+    });
+    if (DD && c.specs.length) {
+      var fac = n.H.list.concat(n.P.list).concat(n.C.list).map(function (x) { return x.i; });
+      var docs = doctorsAt(fac, c.specs, 6).filter(function (g) { return g.docs.length; });
+      if (docs.length) {
+        out.push("<h3>Accredited doctors at these hospitals and clinics</h3>");
+        docs.forEach(function (g) { list(e(title(g.spec)), g.docs.map(function (d) { return "Dr. " + e(title(d.n)) + (d.sub ? " (" + e(title(d.sub)) + ")" : "") + " · " + e(d.at.map(function (a) { return /^Maxicare PCC/.test(a) ? a : title(a); }).join(", ")); })); });
+        out.push("<p>Doctors' schedules change; please confirm with the clinic before your visit.</p>");
+      }
+    }
+    return out;
+  }
+  function blocksHtml(B) {
+    return '<div class="pgp">' + B.map(function (x) { return x === "BREAK" ? '<hr class="pgbrk">' : x === "BANNER" ? '<img class="banner" src="' + PDF_IMG.banner + '" alt="Karla Luansing, Health Benefit Consultant, Maxicare">' : x; }).join("") + "</div>";
   }
   function genericEmail(c) {
     var who = c.grp ? c.org : c.name;
@@ -605,22 +702,73 @@
       document.head.appendChild(sc);
     }));
   }
-  var PDF_CSS = ".pgp{font:11px/1.45 Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;box-sizing:border-box;padding:0}" +
-    ".pgp h1{font-size:20px;margin:0 0 6px;color:#0b4a8b}.pgp h2{font-size:14px;margin:14px 0 6px;color:#0b4a8b}.pgp h3{font-size:12px;margin:10px 0 4px}" +
-    ".pgp p{margin:0 0 7px}.pgp ul{margin:0 0 7px;padding-left:18px}.pgp a{color:#0b4a8b}" +
-    ".pgp table{border-collapse:collapse;margin:0 0 9px;width:100%;font-size:10.5px}.pgp tr{page-break-inside:avoid}" +
-    ".pgp th,.pgp td{border:1px solid #c9ced6;padding:4px 6px;text-align:left;vertical-align:top}.pgp th{background:#eef2f7}" +
-    ".pgp .pgp-head{display:flex;justify-content:space-between;border-bottom:2px solid #0b4a8b;padding-bottom:6px;margin-bottom:10px;font-size:10px;color:#444}";
+  // Styles for the proposal (Proposal tab and PDF), following Karla's MyMaxicare template.
+  var PDF_CSS = ".pgp{font:11px/1.42 Calibri,Carlito,Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box}" +
+    ".pgp p{margin:0 0 7px}.pgp a{color:#0b5cc9}.pgp .small{font-size:10px}.pgp .ctr{text-align:center}.pgp .u{text-decoration:underline;font-weight:700}" +
+    ".pgp .letter p{margin:0 0 12px;text-align:justify;line-height:1.6}.pgp .sig{display:block;width:150px;margin:2px 0 -8px}" +
+    ".pgp .sh{font-weight:700;margin:10px 0 3px}.pgp .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}" +
+    ".pgp ul.ck{list-style:none;margin:0 0 6px;padding-left:18px}.pgp ul.ck li{position:relative;padding-left:16px;margin:0 0 1px}.pgp ul.ck li:before{content:'\\2713';position:absolute;left:0;top:0}" +
+    ".pgp table{border-collapse:collapse;width:100%;margin:0 0 10px;font-size:10px}.pgp td,.pgp th{border:1px solid #333;padding:3px 6px;vertical-align:middle;text-align:left}" +
+    ".pgp .pt th{background:#fff;text-align:center;font-weight:700;font-size:9.5px}.pgp .pt th.dk{background:#000;color:#fff}.pgp .pt td.c,.pgp .ft td.c{text-align:center}" +
+    ".pgp .note{border:1px solid #333;padding:8px 10px;font-size:11px}.pgp .note ul.ck{padding-left:0}" +
+    ".pgp .ft td{border:1px solid #9aa3ad}.pgp .ft td.lb{font-weight:700;background:#fff}.pgp .ft td.r{text-align:right}.pgp .ft tr.gap td{border:0;height:6px;padding:0}.pgp .ft td.mh{border:0;font-weight:700;padding:4px 0 2px}" +
+    ".pgp .rt th{background:#fff;text-align:center}.pgp .rt td{text-align:center}.pgp .rt td:first-child{text-align:left}" +
+    ".pgp h2.ph2{font-size:15px;color:#0b5cc9;margin:6px 0 6px}.pgp h3{font-size:12px;margin:8px 0 3px}.pgp ul.pl{margin:0 0 2px;padding-left:18px}" +
+    ".pgp .banner{display:block;width:100%;margin:12px 0}.pgp hr.pgbrk{border:0;border-top:1px dashed #b8c2d0;margin:16px 0}";
+  // A4 page at 96 dpi; header logo (and the summary title from page 2), a blue bar at the foot.
+  var PG = { w: 794, h: 1122.5, top: 104, side: 64, foot: 46, banner: 132 };
+  var PAGE_CSS = ".pgpages{width:" + PG.w + "px;background:#fff}.pgpage{position:relative;width:" + PG.w + "px;height:" + PG.h + "px;overflow:hidden;background:#fff}" +
+    ".pgpage .lg{position:absolute;left:" + (PG.side - 6) + "px;top:30px;height:44px}.pgpage .tt{position:absolute;right:" + PG.side + "px;top:30px;text-align:right;color:#0b5cc9;font:16px/1.2 Calibri,Carlito,Arial,sans-serif;text-decoration:underline}" +
+    ".pgpage .bar{position:absolute;left:0;right:0;bottom:0;height:14px;background:#2f5fb3}.pgpage .bn{position:absolute;left:0;bottom:0;width:100%}" +
+    ".pgpage .bear{position:absolute;right:18px;bottom:14px;height:150px}.pgpage .pc{position:absolute;left:" + PG.side + "px;right:" + PG.side + "px;top:" + PG.top + "px}";
+  (function () { var st = document.createElement("style"); st.textContent = PDF_CSS.replace(/\.pgp/g, ".pg-mail .pgp") + ".pg-mail .pgp{padding:18px;border-radius:6px;max-width:820px}"; document.body.appendChild(st); })();
+  function paginate(o, host) {
+    var pages = [], cur, pc, limit;
+    function newPage() {
+      cur = document.createElement("div"); cur.className = "pgpage";
+      cur.innerHTML = '<img class="lg" src="' + PDF_IMG.logo + '" alt="">' + (pages.length ? '<div class="tt">MyMaxicare Healthcare Benefits<br>Summary</div>' : "") + '<div class="pc pgp"></div><div class="bar"></div>';
+      host.appendChild(cur); pages.push(cur); pc = cur.querySelector(".pc"); limit = PG.h - PG.top - PG.foot; cur._banner = false;
+    }
+    newPage();
+    o.blocks.forEach(function (x) {
+      if (x === "BREAK") { if (pc.children.length) newPage(); return; }
+      if (x === "BANNER") {
+        if (pc.offsetHeight + PG.banner + 10 > limit + PG.foot - 14) newPage();
+        var bn = document.createElement("img"); bn.className = "bn"; bn.src = PDF_IMG.banner; bn.alt = ""; cur.appendChild(bn);
+        cur.querySelector(".bar").remove(); limit = PG.h - PG.top - PG.banner - 14; cur._banner = true; return;
+      }
+      var d = document.createElement("div"); d.innerHTML = x; pc.appendChild(d);
+      if (pc.offsetHeight > limit && pc.children.length > 1) { pc.removeChild(d); newPage(); pc.appendChild(d); }
+    });
+    pages.forEach(function (p, i) { // the template's bear, where a page has room for it
+      var used = p.querySelector(".pc").offsetHeight;
+      if (i && !p._banner && PG.h - PG.top - used - 14 > 170) { var b = document.createElement("img"); b.className = "bear"; b.src = PDF_IMG.bear; b.alt = ""; p.appendChild(b); }
+    });
+    return pages;
+  }
+  function imagesReady(el) {
+    return Promise.all([].slice.call(el.querySelectorAll("img")).map(function (im) { return im.complete ? 0 : new Promise(function (ok) { im.onload = im.onerror = ok; }); }));
+  }
   function proposalPdf(o) {
+    if (!o.blocks) return Promise.reject(new Error("pdf"));
     return loadPdfLib().then(function (h2p) {
       var box = document.createElement("div");
       box.setAttribute("aria-hidden", "true");
       box.style.cssText = "position:fixed;left:-10000px;top:0;";
-      box.innerHTML = "<style>" + PDF_CSS + "</style><div class=\"pgp\"><div class=\"pgp-head\"><b>Maxicare Healthcare Corporation</b><span>Karla Luansing, Health Benefit Consultant (A465132) · +63(977)217-6388</span></div>" + o.proposal + "</div>";
+      box.innerHTML = "<style>" + PDF_CSS + PAGE_CSS + '</style><div class="pgpages"></div>';
       document.body.appendChild(box);
-      var opt = { margin: [12, 12, 14, 12], filename: o.files.filter(function (f) { return f.gen; })[0].name, image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }, pagebreak: { mode: ["css", "legacy"], avoid: ["tr", "li", "p", "h2", "h3"] } };
-      return h2p().set(opt).from(box.querySelector(".pgp")).outputPdf("blob").then(function (b) { box.remove(); return b; }, function (err) { box.remove(); throw err; });
+      var host = box.querySelector(".pgpages"), pages;
+      // lay out once images have their sizes, then page it
+      var probe = document.createElement("div"); probe.innerHTML = [PDF_IMG.logo, PDF_IMG.banner, PDF_IMG.sig, PDF_IMG.bear].map(function (s) { return '<img src="' + s + '" alt="">'; }).join(""); probe.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden"; box.appendChild(probe);
+      return imagesReady(probe).then(function () {
+        pages = paginate(o, host); host.style.cssText = "height:" + (pages.length * PG.h - 3) + "px;overflow:hidden"; // no sliver of an extra page
+        return imagesReady(host);
+      }).then(function () {
+        var opt = { margin: 0, filename: o.files.filter(function (f) { return f.gen; })[0].name, image: { type: "jpeg", quality: 0.92 },
+          html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css"], before: [], after: [], avoid: [] } }; // pages are already A4-sized, so no break handling
+        return h2p().set(opt).from(host).outputPdf("blob");
+      }).then(function (b) { box.remove(); return b; }, function (err) { box.remove(); throw err; });
     });
   }
   // After the draft is made, drop the client's details from the form; the email stays on screen until "Start a new proposal".
