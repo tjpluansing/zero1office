@@ -219,6 +219,31 @@
     return h;
   };
 
+  /* ---------- Secretary (Paolo, 2026-11-25): every approval passes through her ---------- */
+  function sec() { return byId("secretary"); }
+  function secName() { var x = sec(); return x ? x.n : "Your secretary"; }
+  function secBanner(what) {
+    var x = sec();
+    return '<div class="card pad" style="display:flex;gap:10px;align-items:center;margin-bottom:12px">' + (x ? av(x) : "") + '<div><b>Screened by ' + e(secName()) + (x && x.r ? ", " + e(x.r) : "") + '</b><div class="muted small">' + what + ' reach' + (what.slice(-1) === "s" ? "" : "es") + ' you through her. She checks each one is complete, sends incomplete ones back to the sender, and queues the rest here. You still make the final call.</div></div></div>';
+  }
+  if (typeof apItem === "function") {
+    var apItemS = apItem;
+    apItem = function (a) {
+      var h = apItemS(a), n = e(secName());
+      h = h.replace(/(<div class="r">[\s\S]*?)(<\/div><\/div>)/, "$1 · via " + n + "$2");
+      var seen = a.state === "waiting" || a.state === "changes" ? "Checked it's complete and passed it to you" : a.state === "declined" ? "Told the sender it was declined" : "Logged your decision and tracks the send";
+      return h.replace('<div><div class="lbl">Pia', '<div><div class="lbl">' + n + "'s routing</div><div class=\"small\">" + seen + '</div></div><div><div class="lbl">Pia')
+        .replace(/(<div><div class="lbl">[^<]*'s check<\/div>)/, '<div><div class="lbl">' + n + "'s routing</div><div class=\"small\">" + seen + "</div></div>$1");
+    };
+  }
+  ["approvals", "content"].forEach(function (k) {
+    var v0 = VIEWS[k]; if (!v0) return;
+    VIEWS[k] = function () {
+      var h = v0.apply(this, arguments), at = h.indexOf('<div class="chips">');
+      return at > -1 ? h.slice(0, at) + secBanner(k === "approvals" ? "Proposals, offers and emails" : "Posts, reels and graphics") + h.slice(at) : h;
+    };
+  });
+
   /* ---------- clicks and typing ---------- */
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest && ev.target.closest("[data-ex],[data-act]"); if (!t) return;
@@ -254,5 +279,5 @@
     ev.preventDefault(); ev.stopPropagation(); submitFlow();
   }, true);
 
-  if (["clients", "workflows", "calendar", "reports"].indexOf(S.view) > -1) render();
+  if (["clients", "workflows", "calendar", "reports", "approvals", "content"].indexOf(S.view) > -1) render();
 })();
