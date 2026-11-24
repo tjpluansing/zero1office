@@ -505,6 +505,14 @@
     return out;
   }
 
+  // Karla's signature image (Paolo, 2026-11-24) goes just above the disclaimer. Outlook drafts made by the connector can't hold
+  // images, so the page shows where it goes and the user inserts it from their Outlook signature; the draft text stays image-free.
+  var SIG_IMG = "files/karla-luansing-email-signature.jpg";
+  function withSigImage(o) {
+    var cut = o.email.indexOf("<p>Disclaimer:");
+    if (o.kind === "generic" || cut < 0) return o.email;
+    return o.email.slice(0, cut) + '<div class="pg-sig"><img src="' + SIG_IMG + '" alt="Karla Luansing, Health Benefit Consultant, Maxicare email signature" style="max-width:100%;height:auto;display:block;border-radius:6px"><p class="muted small" style="margin:4px 0 8px"><i>Signature image: insert it here in Outlook (Insert > Signature). It isn\'t part of the draft text.</i></p></div>' + o.email.slice(cut);
+  }
   /* ---------- preview, review and the Outlook draft ---------- */
   function preview() {
     var o = G.out, rv = G.review, dr = G.draft;
@@ -519,10 +527,10 @@
     // files
     if (rv.status === "approved") {
       h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
-        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r"><button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button></td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + '</div>';
+        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r"><button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button></td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
-    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it, attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the disclaimer (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
       (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
@@ -530,7 +538,7 @@
     // email template and proposal
     h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
     h += '<div class="z1-kv"><div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total[0].map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
-    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : o.email + '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>') + '</div></div>';
+    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>') + '</div></div>';
     return h;
   }
   var MAIL_SERVER = "Microsoft 365";
@@ -566,7 +574,7 @@
     });
   }
   function saveFile(i) {
-    var f = G.out && G.out.files[i]; if (!f) return;
+    var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
     var cl = window.claude;
     Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); })])
       .then(function (x) {
@@ -612,6 +620,7 @@
     else if (a === "new") { reset(true); }
     else if (a === "draft") { makeDraft(); return; }
     else if (a === "save") { saveFile(Number(v)); return; }
+    else if (a === "savesig") { saveFile(-1); return; }
     else if (a === "pgtab") { G.tab = v; }
     else if (a === "copy") { copyMail(); return; }
     render();
