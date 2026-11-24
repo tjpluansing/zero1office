@@ -86,6 +86,29 @@ export interface AccessReviewData {
   users: ReviewUser[];
 }
 
+export type IntegrationId = "ghl" | "m365" | "anthropic";
+
+export interface IntegrationRow {
+  id: IntegrationId;
+  name: string;
+  enabled: boolean;
+  config: Record<string, string | number | boolean>;
+  secret_hint: string | null;
+  status: "not_connected" | "untested" | "connected" | "error" | "paused";
+  last_tested_at: string | null;
+  last_test_ok: boolean | null;
+  last_error: string | null;
+  last_details: Record<string, unknown>;
+  secret_set_at: string | null;
+  updated_at: string;
+}
+
+export interface TestResult {
+  ok: boolean;
+  error?: string;
+  details?: Record<string, unknown>;
+}
+
 export interface UserRow {
   id: string;
   email: string;

@@ -18,6 +18,14 @@ const LABELS: Record<string, string> = {
   "password.reset_by_admin": "Reset a password",
   "password.reset_email_sent": "Sent a reset link",
   export: "Exported data",
+  "integration.updated": "Changed an integration",
+  "integration.tested": "Tested an integration",
+  "integration.disconnected": "Disconnected an integration",
+  "policy.accepted": "Accepted the agreement",
+  "policy.published": "Published a new agreement",
+  "mfa.enrolled": "Turned on two-step",
+  "mfa.reset_by_admin": "Reset two-step",
+  "access_review.completed": "Completed access review",
 };
 
 function summary(r: AuditRow): string {
@@ -29,6 +37,9 @@ function summary(r: AuditRow): string {
     const c = d[k] as { from?: unknown; to?: unknown } | undefined;
     if (c && typeof c === "object") parts.push(`${k.replace("_id", "")}: ${String(c.from)} → ${String(c.to)}`);
   }
+  if (r.target_type === "integration" || typeof d.integration === "string") parts.push(String(d.integration ?? r.target_id));
+  if (typeof d.ok === "boolean") parts.push(d.ok ? "passed" : `failed${d.error ? `: ${String(d.error)}` : ""}`);
+  if (d.key_replaced === true) parts.push("key replaced");
   if (typeof d.rows === "number") parts.push(`${r.target_type}, ${d.rows} rows`);
   return parts.join(" · ");
 }

@@ -7,7 +7,7 @@
 import type { Api, AuthEvent } from "./api";
 import { computeEffective } from "./permissions";
 import type {
-  AccessReviewData, Policy,
+  AccessReviewData, IntegrationRow, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
 } from "./types";
 
@@ -41,6 +41,8 @@ const permissions: Permission[] = [
   P("admin_users", "Manage Users", "delete", "Delete users", 63),
   P("admin_settings", "Admin Settings", "view", "See app settings", 70),
   P("admin_settings", "Admin Settings", "edit", "Change app settings", 71),
+  P("integrations", "Integrations", "view", "See connected services and their status", 75),
+  P("integrations", "Integrations", "edit", "Connect, change keys, test or disconnect services", 76),
   P("audit_log", "Audit Log", "view", "See the audit log", 80),
   P("audit_log", "Audit Log", "export", "Export the audit log", 81),
 ];
@@ -67,6 +69,7 @@ const catalog: Catalog = {
 interface DemoUser extends Omit<UserRow, "override_count"> { overrides: Override[]; policy: string | null; mfa: boolean }
 interface DemoState {
   users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null; aal: "aal1" | "aal2";
+  integrations: (IntegrationRow & { secret: string | null })[];
   reviews: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string }[];
 }
 
@@ -88,9 +91,9 @@ const POLICY: Policy = {
     "**10. Consequences.** Breaking these rules can lead to loss of access and disciplinary action.",
   ].join("\n\n"),
 };
-const sensitive = (k: string) => /^(admin_users|admin_settings)\./.test(k) || k.endsWith(".export");
+const sensitive = (k: string) => /^(admin_users|admin_settings|integrations)\./.test(k) || k.endsWith(".export");
 
-const KEY = "z1-demo-state-v2";
+const KEY = "z1-demo-state-v3";
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 
 function seed(): DemoState {
@@ -104,6 +107,11 @@ function seed(): DemoState {
     sessionUserId: null,
     aal: "aal1",
     reviews: [],
+    integrations: ([["ghl", "GoHighLevel"], ["m365", "Microsoft 365"], ["anthropic", "Claude API"]] as const).map(([id, name]) => ({
+      id, name, enabled: false, config: {}, secret: null, secret_hint: null, status: "not_connected" as const,
+      last_tested_at: null, last_test_ok: null, last_error: null, last_details: {}, secret_set_at: null,
+      updated_at: hoursAgo(1),
+    })),
     users: [
       u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true, policy: null }),
       u("u-karla", "karla@ask-karla.com", "Karla", "agent", "active", 3, {
@@ -128,7 +136,7 @@ export function createDemoApi(): Api {
   let state: DemoState;
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
-    if (!state?.users || !state.reviews) throw new Error();
+    if (!state?.users || !state.reviews || !state.integrations) throw new Error();
   } catch {
     state = seed();
   }
@@ -231,6 +239,51 @@ export function createDemoApi(): Api {
       guardTarget(t);
       t.mfa = false;
       log("mfa.reset_by_admin", id, { email: t.email });
+      save();
+    },
+    async listIntegrations() {
+      need("integrations.view");
+      return state.integrations.map(({ secret: _s, ...r }) => r);
+    },
+    async saveIntegration(id, config, secret, enabled) {
+      await wait();
+      need("integrations.edit");
+      const r = state.integrations.find((x) => x.id === id)!;
+      const key = secret?.trim() || null;
+      if (key && key.length < 16) throw new Error("That key looks too short. Paste the whole value.");
+      const changed = JSON.stringify(config) !== JSON.stringify(r.config);
+      if (key) { r.secret = key; r.secret_hint = key.slice(-4); r.secret_set_at = new Date().toISOString(); }
+      r.config = config;
+      r.enabled = enabled;
+      r.status = !r.secret ? "not_connected" : !enabled ? "paused" : key || changed || r.status === "paused" ? "untested" : r.status;
+      if (key || changed) r.last_error = "Not tested since the last change";
+      log("integration.updated", null, { integration: id, key_replaced: !!key }, "integration");
+      save();
+    },
+    async testIntegration(id) {
+      await new Promise((res) => setTimeout(res, 700));
+      need("integrations.edit");
+      const r = state.integrations.find((x) => x.id === id)!;
+      const missing = id === "ghl" ? !r.config.location_id : id === "m365" ? !r.config.tenant_id || !r.config.client_id : false;
+      const result = !r.secret ? { ok: false, error: "No key saved yet." }
+        : missing ? { ok: false, error: "Fill in the required IDs first." }
+        : { ok: true, details: id === "ghl" ? { account: "Ask Karla (demo)", timezone: "Asia/Manila" }
+            : id === "m365" ? { token: "ok", mailbox: r.config.mailbox || null } : { models: ["claude-sonnet-5-5", "claude-haiku-5-5"] } };
+      r.last_tested_at = new Date().toISOString();
+      r.last_test_ok = result.ok;
+      r.last_error = result.ok ? null : result.error!;
+      r.last_details = result.details ?? {};
+      r.status = !r.enabled ? "paused" : result.ok ? "connected" : "error";
+      log("integration.tested", null, { integration: id, ok: result.ok }, "integration");
+      save();
+      return result;
+    },
+    async disconnectIntegration(id) {
+      need("integrations.edit");
+      const r = state.integrations.find((x) => x.id === id)!;
+      Object.assign(r, { secret: null, secret_hint: null, secret_set_at: null, enabled: false, status: "not_connected",
+        last_error: null, last_test_ok: null });
+      log("integration.disconnected", null, { integration: id }, "integration");
       save();
     },
     async getAccessReview(): Promise<AccessReviewData> {

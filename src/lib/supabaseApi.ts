@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
+import type { IntegrationRow, TestResult } from "./types";
 import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -13,8 +14,9 @@ export function createSupabaseApi(): Api {
     return r.data;
   };
 
-  async function adminCall<T>(body: Record<string, unknown>): Promise<T> {
-    const { data, error } = await sb.functions.invoke("admin-users", { body });
+  const adminCall = <T,>(body: Record<string, unknown>) => adminFn<T>("admin-users", body);
+  async function adminFn<T>(fn: string, body: Record<string, unknown>): Promise<T> {
+    const { data, error } = await sb.functions.invoke(fn, { body });
     if (error) {
       // FunctionsHttpError carries the JSON body in error.context
       let msg = error.message;
@@ -95,6 +97,19 @@ export function createSupabaseApi(): Api {
     },
     async completeAccessReview(notes) {
       must(await sb.rpc("complete_access_review", { p_notes: notes }));
+    },
+
+    async listIntegrations() {
+      return must(await sb.from("integrations")
+        .select("id, name, enabled, config, secret_hint, status, last_tested_at, last_test_ok, last_error, last_details, secret_set_at, updated_at")
+        .order("id")) as IntegrationRow[];
+    },
+    async saveIntegration(id, config, secret, enabled) {
+      must(await sb.rpc("integration_save", { p_id: id, p_config: config, p_secret: secret, p_enabled: enabled }));
+    },
+    testIntegration: (id) => adminFn<TestResult>("integrations", { action: "test", id }),
+    async disconnectIntegration(id) {
+      must(await sb.rpc("integration_disconnect", { p_id: id }));
     },
 
     async getCatalog(): Promise<Catalog> {

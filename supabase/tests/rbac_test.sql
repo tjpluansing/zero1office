@@ -198,4 +198,34 @@ select accept_policy('2026-12-01');
 select pg_temp.check(has_permission('clients.view'), 'access returns after accepting');
 reset role;
 
+-- ---------- Integrations ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla, agent
+select pg_temp.check((select count(*) = 0 from integrations), 'non-admins cannot see integrations');
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'pit-abcdefghijklmnop')$$, 'permission');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select accept_policy('2026-12-01');
+set request.jwt.claims = '{"aal":"aal1"}';
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'pit-abcdefghijklmnop')$$, 'permission');
+set request.jwt.claims = '{"aal":"aal2"}';
+select pg_temp.expect_error($$select integration_save('ghl', '{"evil":1}')$$, 'Unknown setting');
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'short')$$, 'too short');
+select integration_save('ghl', '{"location_id":"loc123"}', 'pit-0000-1111-2222-wxyz', true);
+select pg_temp.check((select status = 'untested' and secret_hint = 'wxyz' and config->>'location_id' = 'loc123'
+  from integrations where id = 'ghl'), 'saved: key hidden, hint kept, needs a test');
+select pg_temp.expect_error($$select secret_id from integrations$$, 'permission denied');
+select pg_temp.expect_error($$select integration_secret('ghl')$$, 'permission denied');
+reset role;
+select pg_temp.check((select integration_secret('ghl') = 'pit-0000-1111-2222-wxyz'), 'server can read the key');
+select integration_record_test('ghl', '00000000-0000-0000-0000-00000000000a', true, null, '{"location":"Ask Karla"}');
+select pg_temp.check((select status = 'connected' from integrations where id = 'ghl'), 'successful test marks connected');
+set role authenticated;
+select integration_disconnect('ghl');
+select pg_temp.check((select status = 'not_connected' and secret_hint is null from integrations where id = 'ghl'),
+  'disconnect clears the integration');
+select pg_temp.expect_error($$select * from vault.secrets$$, 'permission denied');
+reset role;
+select pg_temp.check((select count(*) = 0 from vault.secrets), 'disconnect deletes the stored key');
+select pg_temp.check((select count(*) >= 3 from audit_log where target_type = 'integration'), 'integration changes are audited');
+
 \echo ALL RBAC TESTS PASSED

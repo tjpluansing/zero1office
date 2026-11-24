@@ -55,6 +55,7 @@ The matrix picks it up automatically.
 5. **Deploy the Edge Function**
    ```bash
    supabase functions deploy admin-users
+   supabase functions deploy integrations
    supabase secrets set APP_URL=https://app.ask-karla.com
    ```
 6. **Create Paolo's Super Admin** (on your own computer; the service key never goes in the app):
@@ -85,6 +86,7 @@ The matrix picks it up automatically.
 | Monthly access review with sign-off and snapshot | `access_review_data()`, `complete_access_review()`; *Access Review* page |
 | Warning while only one Super Admin exists | Manage Users |
 | Admin reset of a lost authenticator | Manage Users → Reset sign-in |
+| Admin → Integrations: GoHighLevel, Microsoft 365, Claude API with keys in Supabase Vault, test connection, pause, disconnect | migration 5, `supabase/functions/integrations`, `src/pages/admin/Integrations.tsx` |
 | Written access control and password policy | `docs/policies/access-control-and-password-policy.md` |
 
 Edit the agreement wording in migration 4 before launch. To change it later, run

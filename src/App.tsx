@@ -5,6 +5,7 @@ import { HomeRedirect, RequireAuth, RequirePermission } from "./auth/guards";
 import Layout from "./components/Layout";
 import AccessReviewPage from "./pages/admin/AccessReview";
 import AuditLogPage from "./pages/admin/AuditLog";
+import IntegrationsPage from "./pages/admin/Integrations";
 import { AgreementPage, SecurityPage, VerifyCodePage } from "./pages/security";
 import UsersPage from "./pages/admin/Users";
 import {
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="admin/users" element={<RequirePermission permission="admin_users.view"><UsersPage /></RequirePermission>} />
               <Route path="security" element={<SecurityPage />} />
               <Route path="admin/access-review" element={<RequirePermission permission="admin_users.view"><AccessReviewPage /></RequirePermission>} />
+              <Route path="admin/integrations" element={<RequirePermission permission="integrations.view"><IntegrationsPage /></RequirePermission>} />
               <Route path="admin/audit" element={<RequirePermission permission="audit_log.view"><AuditLogPage /></RequirePermission>} />
               <Route path="admin/settings" element={<RequirePermission permission="admin_settings.view">
                 <ModulePage page="admin_settings" title="Admin Settings" description="Allowed email domains, idle sign-out time and integrations." />

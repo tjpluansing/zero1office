@@ -1,5 +1,5 @@
 import type {
-  AccessReviewData, MfaEnrollment, Policy,
+  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, TestResult,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
@@ -41,6 +41,10 @@ export interface Api {
   resetMfa(userId: string): Promise<void>;
   getAccessReview(): Promise<AccessReviewData>;
   completeAccessReview(notes: string): Promise<void>;
+  listIntegrations(): Promise<IntegrationRow[]>;
+  saveIntegration(id: string, config: IntegrationRow["config"], secret: string | null, enabled: boolean): Promise<void>;
+  testIntegration(id: string): Promise<TestResult>;
+  disconnectIntegration(id: string): Promise<void>;
   listAudit(limit?: number): Promise<AuditRow[]>;
   exportAudit(): Promise<AuditRow[]>;
 
