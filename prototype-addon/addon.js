@@ -600,6 +600,26 @@
   var baseRender2 = render;
   render = function () { baseRender2(); renderMe(); };
 
+  /* ---------- Leads and Leads finder as one page with two tabs (Paolo, 2026-11-24) ---------- */
+  NAV.forEach(function (g) { g[1] = g[1].filter(function (it) { return it[0] !== "finder"; }); });
+  function leadTabs(html, on) {
+    var tabs = '<div class="chips"><button class="chip" data-go="leads" aria-pressed="' + (on === "leads") + '">List</button>' +
+      '<button class="chip" data-go="finder" aria-pressed="' + (on === "finder") + '">How it\'s going</button></div>';
+    html = html.replace("<h2>Leads finder</h2>", "<h2>Leads</h2>");
+    var cut = html.indexOf("</button></div>");
+    return cut > -1 ? html.slice(0, cut + 15) + tabs + html.slice(cut + 15) : tabs + html;
+  }
+  var baseLeads = VIEWS.leads, baseFinder = VIEWS.finder;
+  VIEWS.leads = function () { return leadTabs(baseLeads(), "leads"); };
+  VIEWS.finder = function () { return leadTabs(baseFinder(), "finder"); };
+  var baseNav = renderNav;
+  renderNav = function () {
+    baseNav();
+    if (S.view !== "finder") return;
+    var b = document.querySelector('#nav [data-go="leads"]');
+    if (b) { b.classList.add("on"); b.setAttribute("aria-current", "page"); }
+  };
+
   /* ---------- 3. live office: Nina and Sol work the tracker ---------- */
   function buildLive() {
     var open = B.soas.filter(function (s) { return s.stage !== "closed"; });
