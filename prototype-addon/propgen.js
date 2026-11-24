@@ -462,7 +462,7 @@
   function sendToAgent() {
     var o = G.out; G.review = { agent: agentFor(o.co), status: "checking", checks: [] };
     clearTimeout(checkTimer);
-    checkTimer = setTimeout(function () { if (G.out !== o) return; G.review.checks = runChecks(o); G.review.status = G.review.checks.some(function (x) { return x.s === "fail"; }) ? "returned" : "approved"; G.review.at = new Date().toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }); if (S.view === "propgen") render(); }, 1200);
+    checkTimer = setTimeout(function () { if (G.out !== o) return; G.review.checks = runChecks(o); G.review.status = G.review.checks.some(function (x) { return x.s === "fail"; }) ? "returned" : "approved"; G.review.at = new Date().toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }); if (G.review.status === "approved") queueApproval(o); if (S.view === "propgen") render(); }, 1200);
   }
   // Each check recomputes from the source tables, not from the text of the proposal.
   function runChecks(o) {
@@ -528,6 +528,8 @@
     if (rv.checks.length) h += '<ul style="margin:0;padding-left:18px;display:grid;gap:3px;font-size:12.5px">' + rv.checks.map(function (x) { return '<li>' + (x.s === "ok" ? "✓ " : x.s === "warn" ? "⚠ " : "✕ ") + e(x.t) + '</li>'; }).join("") + '</ul>';
     if (G.warn.length) h += G.warn.map(function (w) { return '<p class="small" style="margin:0">⚠ ' + e(w) + ' (not in the email)</p>'; }).join("");
     h += '</div>';
+    var ap = pgItem();
+    if (rv.status === "approved") h += approvalBox(ap);
     // files
     if (rv.status === "approved") {
       h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
@@ -537,7 +539,7 @@
     if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
-      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
+      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
     h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
@@ -557,7 +559,7 @@
     return "The draft wasn't created" + (err && err.message ? " (" + e(String(err.message).slice(0, 200)) + ")" : "") + ". You can try again or copy the email.";
   }
   function makeDraft() {
-    var o = G.out; if (!o || G.sending || G.draft || !G.review || G.review.status !== "approved") return;
+    var o = G.out; var ap = pgItem(); if (!o || G.sending || G.draft || !G.review || G.review.status !== "approved" || !ap || ap.state !== "approved") return;
     var cc = (G.f.cc || "").trim();
     if (cc && !EMAIL_RE.test(cc)) { G.mailErr = "The CC address doesn't look right."; render(); return; }
     G.sending = true; G.mailErr = ""; render();
@@ -570,7 +572,7 @@
     }).then(function (res) {
       var p = (res && res.payload) || {}, link = p.webLink || p.weblink || p.web_link || "";
       G.sending = false; G.draft = { link: /^https:\/\//.test(link) ? link : "" };
-      log("draft"); clearPersonal(); say("Draft ready in Outlook"); render();
+      log("draft"); ap.state = "sent"; ap.when = "Draft in Outlook " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ } clearPersonal(); say("Draft ready in Outlook"); render();
     }, function (err) {
       G.sending = false;
       G.mailErr = err && err.code === "unavailable_here" ? "Outlook can't be reached from this view. Open Zero1Office on claude.ai with Microsoft 365 connected, or copy the email." : mailError(err);
@@ -689,6 +691,68 @@
     try { generate().catch(function (err) { G.err = err.message; render(); }); }
     catch (err) { G.err = err.message; render(); var el = document.querySelector("[data-pgform] .err"); if (el) el.scrollIntoView({ block: "center" }); }
   }, true);
+
+  /* ---------- Approvals: every checked proposal waits for your OK before the email is made (Paolo, 2026-11-25) ---------- */
+  // Items live in S.data.approvals so they show on the Approvals page and its badge, but they hold the client's name and
+  // email, so save() leaves them out of browser storage (and feed notes leave the name out): they last only while the page is open.
+  function pgItem() { var o = G.out; return o && o.apId ? (S.data.approvals || []).filter(function (x) { return x.id === o.apId; })[0] || null : null; }
+  function stripTags(h) { var d = document.createElement("div"); d.innerHTML = h.replace(/<br\s*\/?>/g, "\n"); return d.textContent; }
+  function queueApproval(o) {
+    var list = S.data && S.data.approvals; if (!list || o.apId) return;
+    for (var i = list.length - 1; i >= 0; i--) if (list[i].pg && list[i].state !== "sent") list.splice(i, 1);
+    var lines = [], m = o.email.match(/<p>[\s\S]*?<\/p>|<li>[\s\S]*?<\/li>/g) || [];
+    m.forEach(function (x) { var t = stripTags(x).trim(); if (t && !/^Disclaimer:/.test(t)) lines.push(t); });
+    var table = null;
+    if (o.calc && o.c.plans) {
+      var names = o.c.plans.map(function (p) { return p.n; });
+      table = [[o.fam ? "Family total" : "Payment mode"].concat(names)].concat(o.modes.map(function (mo, mi) {
+        return [MODE_NAME[mo]].concat(names.map(function (n, j) { return peso0(o.fam ? o.total[mi][j] : o.calc[0].fees[mi][j]); }));
+      }));
+    }
+    var a = { id: "pg_" + Date.now().toString(36), pg: 1, kind: "Proposal", title: o.subject + " for " + o.c.name, who: G.review.agent.id,
+      aud: o.c.name + " (" + o.to + ")", count: 1, when: "Today, " + nowLabel(), state: "waiting",
+      doc: { eyebrow: o.co + " " + o.type + " · email to " + o.to, head: o.subject, lines: lines, table: table,
+        cta: o.files.length ? "Attachments: " + o.files.map(function (f) { return f.name; }).join(", ") : "No attachments" },
+      checks: G.review.checks.map(function (x) { return [x.s === "ok" ? "ok" : "watch", x.t]; }) };
+    list.unshift(a); o.apId = a.id;
+    var ea = byId(a.who); if (ea) addFeed(ea, "Sent for your OK: " + a.doc.head);
+    say("Proposal checked by " + G.review.agent.n + ". It's waiting for your OK in Approvals.");
+  }
+  function approvalBox(ap) {
+    if (!ap) return "";
+    var st = ap.state, h = '<div class="z1-box" role="status"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Your approval</b><span class="sp" style="flex:1"></span>' + apState(st) + '</div>';
+    if (st === "waiting") h += '<span class="small">The proposal is in Approvals. Once you approve it there, you can create the Outlook draft here.</span><button class="btn sm pri" style="justify-self:start" data-go="approvals">Open approvals</button>';
+    else if (st === "changes") h += '<span class="small">You asked for changes' + (ap.note ? ': “' + e(ap.note) + '”' : '') + '. Edit the details and generate it again.</span>';
+    else if (st === "declined") h += '<span class="small">You declined this proposal, so no email will be made. Edit the details to start over.</span>';
+    else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook draft.</span>';
+    return h + '</div>';
+  }
+  (function () {
+    if (typeof apItem === "function") {
+      var apItem0 = apItem;
+      apItem = function (a) {
+        var h = apItem0(a); if (!a.pg) return h;
+        return h.replace("Pia's pre-send check", e(nameOf(a.who)) + "'s check").replace(/>Approve and send to 1</, ">Approve<")
+          .replace(/<button class="btn" data-act="test"[^>]*>[^<]*<\/button>/, "").replace(/>Send now</, ">Create the Outlook draft<");
+      };
+    }
+    if (typeof save === "function") {
+      var save0 = save;
+      save = function () { var d = S.data, all = d && d.approvals; if (!all) return save0.apply(this, arguments); d.approvals = all.filter(function (x) { return !x.pg; }); try { return save0.apply(this, arguments); } finally { d.approvals = all; } };
+    }
+    function item(id) { return (S.data.approvals || []).filter(function (x) { return x.id === id; })[0]; }
+    document.addEventListener("click", function (ev) {
+      var b = ev.target.closest && ev.target.closest("[data-act]"); if (!b || !/^pg_/.test(b.dataset.id || "")) return;
+      var act = b.dataset.act, a = item(b.dataset.id); if (!a || ["approve", "sendnow", "test"].indexOf(act) < 0) return;
+      ev.stopPropagation(); ev.preventDefault();
+      if (act === "approve") { a.state = "approved"; a.when = "Approved " + nowLabel() + " today"; var ea = byId(a.who); if (ea) addFeed(ea, "You approved: " + a.doc.head); render(); say("Approved. Create the Outlook draft from the Proposal generator."); }
+      else if (act === "sendnow") { go("propgen"); if (G.out && G.out.apId === a.id) makeDraft(); }
+    }, true);
+    document.addEventListener("submit", function (ev) {
+      var f = ev.target; if (!f || !f.dataset || f.dataset.form !== "ask" || !/^pg_/.test(f.dataset.id || "")) return;
+      var a = item(f.dataset.id), t = document.getElementById("askText"); if (a && t) a.note = t.value.trim().slice(0, 300);
+    }, true);
+  })();
 
   /* ---------- hook into the page: Today > Proposal generator (moved from Numbers, Paolo 2026-11-25) ---------- */
   (function () {
