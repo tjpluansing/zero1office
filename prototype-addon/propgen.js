@@ -171,7 +171,7 @@
   /* ---------- state ---------- */
   var HIST_KEY = "zero1office-proposals:v1"; // company, type, date and status only: no client or member data is kept
   var G = { co: "", type: "", f: {}, members: [], specs: ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY"], out: null, err: "", warn: [], sending: false, draft: null, review: null, tab: "email", mailErr: "" };
-  function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.draft = null; G.review = null; G.tab = "email"; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
+  function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.draft = null; G.review = null; G.tab = "email"; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; G.ghl = null; G.ghlInfo = null; G.ghlStamp = null; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
   function formKind() { if (G.co === "Maxicare" && G.type === "SME") return "mxs"; if (G.co === "Maxicare" && G.type === "Corporate") return "mxc"; if (G.co === "Maxicare" && G.type === "Prepaid") return "mxp"; if (G.co === "Maxicare" && G.type === "MPlus vs Corporate") return "mxv"; if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
 
   /* ---------- view ---------- */
@@ -949,7 +949,7 @@
     else if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
-      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<span class="chips" role="group" aria-label="Send with" style="margin:0"><button class="chip" data-pg="via" data-v="outlook" aria-pressed="' + (mailVia() === "outlook") + '">Outlook (Microsoft 365)</button><button class="chip" data-pg="via" data-v="gmail" aria-pressed="' + (mailVia() === "gmail") + '">Gmail</button></span><button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : mailVia() === "gmail" ? "Create the Gmail draft" : "Create the Outlook draft") + '</button>' : "") +
+      (dr ? ghlLine() + '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<span class="chips" role="group" aria-label="Send with" style="margin:0"><button class="chip" data-pg="via" data-v="outlook" aria-pressed="' + (mailVia() === "outlook") + '">Outlook (Microsoft 365)</button><button class="chip" data-pg="via" data-v="gmail" aria-pressed="' + (mailVia() === "gmail") + '">Gmail</button></span><button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : mailVia() === "gmail" ? "Create the Gmail draft" : "Create the Outlook draft") + '</button>' : "") +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
     if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp" || o.kind === "mxv") G.tab = "email";
@@ -1037,12 +1037,86 @@
       var p = (res && res.payload) || {}, link = p.viewUrl || p.webLink || p.weblink || p.web_link || "";
       if (via === "gmail" && !link && p.id) link = "https://mail.google.com/mail/#drafts";
       G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false };
-      log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ } clearPersonal(); say("Draft ready in " + app); render();
+      log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ }
+      G.ghlInfo = ghlInfo(o); clearPersonal(); say("Draft ready in " + app); render(); ghlLog();
     }, function (err) {
       G.sending = false;
       G.mailErr = err && err.code === "unavailable_here" ? app + " can't be reached from this view. Open Zero1Office on claude.ai with " + (via === "gmail" ? "Gmail" : "Microsoft 365") + " connected, or copy the email." : mailError(err, via);
       render();
     });
+  }
+
+  /* ---------- GoHighLevel (Paolo, 2026-11-25: proposals go into a "Proposals" pipeline) ----------
+     After the draft is made, the client goes into GHL: the contact (name and email; the company for group plans), an
+     opportunity in the Proposals pipeline at its first stage ("Proposal drafted"), and a short note on the contact.
+     Family members' names and ages, and anything about health, never go to GHL. Nothing is kept in this browser:
+     the details live in memory until "Start a new proposal". */
+  var GHL = "GHL";
+  function ghlInfo(o) {
+    var c = o.c || {}, val = null;
+    try { if (o.calc && o.calc[0]) val = Math.min.apply(null, o.fam && o.total ? o.total[0] : o.calc[0].fees[0]); } catch (err) { val = null; }
+    var what = o.co + " " + o.type, who = c.org || c.name || o.to;
+    var note = "Proposal drafted in Zero1Office: " + what + (o.subject ? ' ("' + o.subject + '")' : "") + "." +
+      (val && isFinite(val) ? " Lowest annual option: " + peso0(val) + "." : "") +
+      (c.opt && c.opt.n ? " Option: " + c.opt.n + "." : "") + (G.review && G.review.agent ? " Checked by " + G.review.agent.n + "." : "") +
+      " Draft is in Karla's " + (G.draft && G.draft.via === "gmail" ? "Gmail" : "Outlook") + ".";
+    return { name: String(c.name || "").trim(), email: o.to, org: String(c.org || "").trim(), opp: (who + " · " + what).slice(0, 120), value: val && isFinite(val) ? Math.round(val) : null, note: note };
+  }
+  function ghlData(r) {
+    var p = r && r.payload;
+    if (p && typeof p === "object") return p.data || p;
+    var out = null;
+    if (r && Array.isArray(r.content)) r.content.forEach(function (b) { if (!out && b && b.type === "text") { try { var j = JSON.parse(b.text); out = j && (j.data || j); } catch (err) { /* skip */ } } });
+    return out || {};
+  }
+  function ghlKey(step) { var i = G.ghlInfo || {}; return ("z1pg-" + step + "-" + (i.email || "") + "-" + (i.opp || "")).replace(/[^A-Za-z0-9@._-]/g, "_").slice(0, 120) + "-" + (G.ghlStamp || ""); }
+  function ghlLog() {
+    var i = G.ghlInfo; if (!i || (G.ghl && G.ghl.state === "busy")) return;
+    var cl = window.claude; if (!cl || !cl.use) { G.ghl = { state: "err", msg: "GoHighLevel can't be reached from this view." }; render(); return; }
+    if (!G.ghlStamp || (G.ghl && G.ghl.state === "ok")) G.ghlStamp = Date.now().toString(36);
+    G.ghl = { state: "busy" }; render();
+    var mcp, pipe, stage, loc, contactId;
+    function run(op, params, step) { var x = { operationId: op, params: params, reason: "Log a Zero1Office proposal in GoHighLevel" }; if (step) x.idempotencyKey = ghlKey(step); return mcp.callTool(GHL, "execute_operation", x).then(ghlData); }
+    cl.use("mcp").then(function (m) {
+      mcp = m; if (!mcp) throw { code: "unavailable_here" };
+      return run("get-pipelines", {});
+    }).then(function (d) {
+      var ps = d.pipelines || []; pipe = ps.filter(function (x) { return /^\s*proposals?\s*$/i.test(x.name || ""); })[0];
+      if (!pipe) throw { code: "no_pipeline" };
+      var st = pipe.stages || []; stage = st.filter(function (x) { return /draft/i.test(x.name || ""); })[0] || st.slice().sort(function (a, b) { return (a.position || 0) - (b.position || 0); })[0];
+      loc = pipe.locationId || "";
+      var body = { email: i.email, source: "Zero1Office proposal generator" };
+      if (i.name) body.name = i.name;
+      if (i.org) body.companyName = i.org;
+      return run("upsert-contact", { body: body }, "contact");
+    }).then(function (d) {
+      contactId = d.contact && d.contact.id; if (!contactId) throw { code: "no_contact" };
+      var body = { pipelineId: pipe.id, name: i.opp, status: "open", contactId: contactId };
+      if (stage) body.pipelineStageId = stage.id;
+      if (i.value) body.monetaryValue = i.value;
+      return run("create-opportunity", { body: body }, "opp");
+    }).then(function () {
+      return run("create-note", { path: { contactId: contactId }, body: { body: i.note } }, "note").catch(function () { /* the opportunity is what matters */ });
+    }).then(function () {
+      var link = loc && /^[A-Za-z0-9]+$/.test(loc) && /^[A-Za-z0-9]+$/.test(contactId) ? "https://app.gohighlevel.com/v2/location/" + loc + "/contacts/detail/" + contactId : "";
+      G.ghl = { state: "ok", link: link, stage: stage ? stage.name : "" }; say("Added to GoHighLevel"); render();
+    }, function (err) {
+      var c = err && err.code;
+      G.ghl = { state: "err", msg: c === "no_pipeline" ? "There's no pipeline named “Proposals” in GoHighLevel yet. Create it (Opportunities > Pipelines), then press Try again." :
+        c === "needs_reauth" ? "The GoHighLevel sign-in expired. Reconnect GHL in claude.ai Settings, Connectors, then press Try again." :
+        c === "server_not_connected" || c === "selection_required" ? "GoHighLevel isn't connected for you. Connect it in claude.ai Settings, Connectors." :
+        c === "not_granted" || c === "consent_required" ? "GoHighLevel was turned off for this page. Allow it in the page's permissions, then press Try again." :
+        c === "unavailable_here" ? "GoHighLevel can't be reached from this view. Open Zero1Office on claude.ai." :
+        c === "no_contact" ? "GoHighLevel didn't return the contact. Press Try again." :
+        c === "rate_limited" ? "GoHighLevel is busy. Wait a minute, then press Try again." : "GoHighLevel didn't take it" + (c ? " (" + c + ")" : "") + ". Press Try again." };
+      render();
+    });
+  }
+  function ghlLine() {
+    var g = G.ghl; if (!G.ghlInfo && !g) return "";
+    if (!g || g.state === "busy") return '<span class="small muted" role="status">Adding the client to GoHighLevel…</span>';
+    if (g.state === "ok") return '<span class="small" role="status">✓ In GoHighLevel: Proposals pipeline' + (g.stage ? ", " + e(g.stage) : "") + (g.link ? ' · <a href="' + e(g.link) + '" target="_blank" rel="noopener">Open the contact</a>' : "") + '</span>';
+    return '<span class="small" role="alert">' + e(g.msg) + '</span><button class="btn sm" data-pg="ghl">Try again</button>';
   }
   function saveFile(i) {
     var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
@@ -1214,6 +1288,7 @@
     else if (a === "edit") { G.out = null; G.review = null; G.draft = null; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; }
     else if (a === "new") { reset(true); }
     else if (a === "draft") { makeDraft(); return; }
+    else if (a === "ghl") { ghlLog(); return; }
     else if (a === "via") { setVia(v); }
     else if (a === "save") { saveFile(Number(v)); return; }
     else if (a === "savesig") { saveFile(-1); return; }
