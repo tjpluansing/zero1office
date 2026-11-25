@@ -1,6 +1,7 @@
 import type {
   AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult, IntegrationAlert,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
+  FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
 import { createDemoApi } from "./demoApi";
@@ -61,6 +62,22 @@ export interface Api {
   saveClient(row: Partial<ClientRow> & { full_name: string }): Promise<void>;
   deleteClient(id: string): Promise<void>;
   exportClients(): Promise<ClientRow[]>;
+
+  // --- follow-up queue (Felix + assistant) ---
+  listFollowups(): Promise<FollowupRow[]>;
+  listFollowupEvents(id: string): Promise<FollowupEvent[]>;
+  getFollowupSettings(): Promise<FollowupSettings>;
+  /** Chase rules. Karla (followups.approve) or admins (admin_settings.edit). */
+  saveFollowupSettings(s: FollowupSettings): Promise<void>;
+  /** Creates (no id) or edits the details of an item. Status and counters have their own calls. */
+  saveFollowup(row: FollowupInput): Promise<void>;
+  /** The assistant sent a chase. Escalates to Karla after the max number of tries. */
+  logFollowupChase(id: string, channel: FollowupChannel, note: string | null, fromFelix: boolean): Promise<void>;
+  /** Waived / cancelled, and reopening those, need followups.approve. */
+  setFollowupStatus(id: string, status: FollowupStatus, note: string | null): Promise<void>;
+  addFollowupNote(id: string, note: string): Promise<void>;
+  deleteFollowup(id: string): Promise<void>;
+  exportFollowups(): Promise<FollowupRow[]>;
 }
 
 export const isDemo = import.meta.env.VITE_DEMO_MODE === "true";

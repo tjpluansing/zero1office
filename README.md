@@ -109,6 +109,23 @@ select cron.schedule('z1-sync-retries', '* * * * *', $$select public.process_int
 select cron.schedule('z1-sync-purge', '15 3 * * *', $$select public.purge_integration_events()$$);
 ```
 
+<<<<<<< HEAD
+## Follow-up queue
+
+**Follow-ups** (`/followups`) lists every pending requirement or reply Ask Karla is chasing from a client or an
+insurer. Felix, the AI employee, drafts each chase (firmer with every try, short for Viber/Messenger, full for
+email); the assistant checks it, sends it from the usual channel and clicks **I sent it**. The next chase is
+scheduled 2 business days later, and after 3 tries with no reply the item moves to Karla ("With Karla").
+Only users with `followups.approve` (Karla, Super Admins) can waive or cancel a requirement.
+
+Only a short description of what is missing is stored. ID, card, account and phone numbers are refused, and
+documents go straight to the insurer. The rules live in `followup_settings` (`chase_every_days`,
+`max_attempts`, `escalate_overdue_days`). Karla or an admin changes them with **Chase rules** on the Follow-ups page; each change is in the audit log.
+Escalate items that are past their due date every morning (8 AM Manila = 00:00 UTC):
+
+```sql
+select cron.schedule('z1-followups-overdue', '0 0 * * *', $$select public.escalate_overdue_followups()$$);
+=======
 ### Daily health check and alerts
 
 Admins see a banner and an alert list on Admin → Integrations when a connection breaks, GHL updates fail or get
@@ -133,6 +150,7 @@ select cron.schedule('z1-health-check', '0 0 * * *', $$
       'X-Health-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'z1_health_secret')),
     body := '{}'::jsonb)
 $$);
+>>>>>>> origin/claude/project-thread-bhgdym
 ```
 
 ## Tests
@@ -143,4 +161,6 @@ PGHOST=... PGPORT=... PGUSER=postgres npm run test:db
 
 Runs the migrations against a scratch database with a stand-in `auth` schema and checks
 the rules: domain restriction, forced password change, page and action blocking, self-lockout,
-last Super Admin, no privilege escalation, suspension and the audit log.
+last Super Admin, no privilege escalation, suspension and the audit log. `followups_test.sql` covers the
+follow-up queue (assistant limits, chase counter, escalation, waive/reopen by Karla only, no ID numbers).
+Pass a test name to run just one: `npm run test:db -- followups_test`.

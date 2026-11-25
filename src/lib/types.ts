@@ -198,3 +198,54 @@ export interface CreateUserInput {
   mode: "invite" | "temp_password";
   overrides: Override[];
 }
+
+// --- follow-up queue ---
+export type FollowupKind = "document" | "signature" | "payment" | "insurer_reply" | "client_reply" | "other";
+export type FollowupParty = "client" | "insurer";
+export type FollowupChannel = "email" | "viber" | "messenger" | "phone" | "sms" | "insurer_portal";
+export type FollowupStatus = "open" | "waiting" | "escalated" | "done" | "waived" | "cancelled";
+
+export interface FollowupRow {
+  id: string;
+  title: string;
+  kind: FollowupKind;
+  party: FollowupParty;
+  client_id: string | null;
+  insurer: string | null;
+  reference: string | null;
+  channel: FollowupChannel;
+  status: FollowupStatus;
+  due_on: string | null;        // yyyy-mm-dd
+  next_chase_on: string;        // yyyy-mm-dd
+  attempts: number;
+  last_chased_at: string | null;
+  escalation_reason: string | null;
+  felix_drafts: boolean;
+  assignee_id: string | null;
+  notes: string | null;
+  ghl_link: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+export type FollowupInput = Partial<Pick<FollowupRow,
+  "id" | "kind" | "party" | "client_id" | "insurer" | "reference" | "channel" | "due_on" | "next_chase_on"
+  | "felix_drafts" | "notes" | "ghl_link">> & { title: string };
+
+export interface FollowupEvent {
+  id: number;
+  followup_id: string;
+  at: string;
+  actor_label: string;
+  kind: "created" | "chased" | "status" | "escalated" | "note" | "edited";
+  channel: string | null;
+  note: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface FollowupSettings {
+  chase_every_days: number;
+  max_attempts: number;
+  escalate_overdue_days: number;
+}
