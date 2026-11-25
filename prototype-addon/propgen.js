@@ -556,15 +556,19 @@
     { id: "mplus", n: "MPlus", prop: "Maxicare_SME_MPlus Plan_Standard Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
     { id: "rated", n: "MPlus Rated", prop: "Maxicare_SME_MPlus Plan_Rated Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
   ];
-  var SME_PATHS = {}; // file name -> published path, filled in as Paolo uploads them
+  var SME_PATHS = { // file name -> published path, filled in as Paolo uploads them
+    "Maxicare_Corporate_Standard Plan": "files/corp/corporate-standard-plan.pdf",
+    "Maxicare_Prospective Corporate Account Form (PCAF)": "files/corp/pcaf.pdf",
+  };
+  var SME_EXT = { "Maxicare_Corporate_Standard Plan": ".pdf", "Maxicare_Corporate Set Up_Template": ".xlsx", "Maxicare_Prospective Corporate Account Form (PCAF)": ".pdf" };
   // Maxicare Corporate (Paolo, 2026-11-25), in his order
   function corpFiles() {
     return [
       { path: MX_FILES[0][0], name: "Karla Luansing_Maxicare_HMO Pubmat.jpg", label: "Karla Luansing_Maxicare_HMO Pubmat" },
-      { path: SME_PATHS["Maxicare_Corporate_Standard Plan"] || "", name: "Maxicare_Corporate_Standard Plan", label: "Maxicare_Corporate_Standard Plan", missing: !SME_PATHS["Maxicare_Corporate_Standard Plan"] },
+      { path: SME_PATHS["Maxicare_Corporate_Standard Plan"] || "", name: "Maxicare_Corporate_Standard Plan" + (SME_EXT["Maxicare_Corporate_Standard Plan"] || ""), label: "Maxicare_Corporate_Standard Plan", missing: !SME_PATHS["Maxicare_Corporate_Standard Plan"] },
       { path: MX_FILES[2][0], name: MX_FILES[2][1], label: "Maxicare_PCCs and Other Services" },
-      { path: SME_PATHS["Maxicare_Corporate Set Up_Template"] || "", name: "Maxicare_Corporate Set Up_Template", label: "Maxicare_Corporate Set Up_Template", missing: !SME_PATHS["Maxicare_Corporate Set Up_Template"] },
-      { path: SME_PATHS["Maxicare_Prospective Corporate Account Form (PCAF)"] || "", name: "Maxicare_Prospective Corporate Account Form (PCAF)", label: "Maxicare_Prospective Corporate Account Form (PCAF)", missing: !SME_PATHS["Maxicare_Prospective Corporate Account Form (PCAF)"] },
+      { path: SME_PATHS["Maxicare_Corporate Set Up_Template"] || "", name: "Maxicare_Corporate Set Up_Template" + (SME_EXT["Maxicare_Corporate Set Up_Template"] || ""), label: "Maxicare_Corporate Set Up_Template", missing: !SME_PATHS["Maxicare_Corporate Set Up_Template"], local: "Excel files can't be saved from this page: attach it from your OneDrive" },
+      { path: SME_PATHS["Maxicare_Prospective Corporate Account Form (PCAF)"] || "", name: "Maxicare_Prospective Corporate Account Form (PCAF)" + (SME_EXT["Maxicare_Prospective Corporate Account Form (PCAF)"] || ""), label: "Maxicare_Prospective Corporate Account Form (PCAF)", missing: !SME_PATHS["Maxicare_Prospective Corporate Account Form (PCAF)"] },
     ];
   }
   function smeFiles(opt) {
@@ -780,7 +784,7 @@
     add(/Please consider the environment/.test(o.email) ? "ok" : "warn", /Please consider the environment/.test(o.email) ? "Has Karla's signature, the spot for her signature image, and the disclaimer." : "The line where Karla's signature image goes is missing.");
     add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
     var miss = o.files.filter(function (f) { return f.missing; });
-    add(miss.length ? "warn" : "ok", o.files.length + " files to attach for " + (corp ? "Maxicare Corporate" : c.opt.n) + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." + (miss.length ? " Not uploaded here yet, so attach from your own files in Outlook: " + miss.map(function (f) { return f.label; }).join(", ") + "." : ""));
+    add(miss.length ? "warn" : "ok", o.files.length + " files to attach for " + (corp ? "Maxicare Corporate" : c.opt.n) + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." + (miss.length ? " Attach from your own files in Outlook (not saveable from this page): " + miss.map(function (f) { return f.label; }).join(", ") + "." : ""));
     return out;
   }
   // Karla's signature image (Paolo, 2026-11-24) goes just above the environment line (moved there 2026-11-25). Outlook drafts made by the connector can't hold
@@ -827,7 +831,7 @@
     // files
     if (rv.status === "approved") {
       h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
-        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r">' + (f.missing ? '<span class="muted small">Not uploaded yet: attach it from your files</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
+        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r">' + (f.missing ? '<span class="muted small">' + e(f.local || "Not uploaded yet: attach it from your files") + '</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
     if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
