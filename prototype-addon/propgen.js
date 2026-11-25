@@ -946,10 +946,12 @@
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
     if (dr && dr.via === "gmail") h += '<div class="z1-box" role="status"><b>The email is in your Gmail Drafts, addressed to ' + e(o.to) + '.</b><span class="small">' + (dr.attached ? dr.attached + " of " + o.files.length + " files are already attached" + (dr.attached < o.files.length ? "; attach the rest from the saved files" : "") : "Attach the " + (o.files.length ? o.files.length + " saved files" : "files")) + (dr.sig ? ", and Karla\'s signature image is in place" : "") + '. Check it, then press Send in Gmail.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Gmail</a>' : '') + '</div>';
-    else if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    else if (dr && dr.box && dr.box !== KARLA_BOX) h += '<div class="z1-box" role="alert"><b>Heads up: this draft is in ' + e(dr.box) + '\'s Outlook, not Karla\'s.</b><span class="small">Proposals go out from ' + KARLA_BOX + '. Before sending, set From to ' + KARLA_BOX + ' in Outlook (you need Send As on her mailbox), or reconnect Microsoft 365 in claude.ai as Karla so drafts land in her Outlook.</span></div>';
+    if (dr && dr.via !== "gmail") h += '<div class="z1-box" role="status"><b>The email is in ' + (dr.box === KARLA_BOX ? "Karla\'s Outlook Drafts (" + KARLA_BOX + ")" : "the Outlook Drafts") + ', addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
-      (dr ? ghlLine() + '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<span class="chips" role="group" aria-label="Send with" style="margin:0"><button class="chip" data-pg="via" data-v="outlook" aria-pressed="' + (mailVia() === "outlook") + '">Outlook (Microsoft 365)</button><button class="chip" data-pg="via" data-v="gmail" aria-pressed="' + (mailVia() === "gmail") + '">Gmail</button></span><button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : mailVia() === "gmail" ? "Create the Gmail draft" : "Create the Outlook draft") + '</button>' : "") +
+      (dr ? ghlLine() + '<button class="btn pri" data-pg="new">Start a new proposal</button>' : '<span class="small"><b>From ' + KARLA_BOX + '</b> (Outlook)</span>' +
+        (rv.status === "approved" && ap && ap.state === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Saving the draft…" : mailVia() === "gmail" ? "Create the Gmail draft" : "Create the Outlook draft") + '</button>' : '<span class="small muted">Once approved, the email is saved in these drafts automatically.</span>')) +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
     if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp" || o.kind === "mxv") G.tab = "email";
@@ -963,7 +965,9 @@
   }
   var MAIL_SERVER = "Microsoft 365", GMAIL_SERVER = "Gmail";
   /* Send with Outlook or Gmail (Paolo, 2026-11-25). The choice is remembered on this device only. */
-  function mailVia() { if (!G.via) { try { G.via = localStorage.getItem("z1pg-via"); } catch (err) { /* optional */ } } return G.via === "gmail" ? "gmail" : "outlook"; }
+  // Paolo, 2026-11-25: "All proposals should be sent using karla@ask-karla.com" (Microsoft 365), so drafts are always Outlook.
+  var KARLA_BOX = "karla@ask-karla.com";
+  function mailVia() { return "outlook"; }
   function setVia(v) { G.via = v === "gmail" ? "gmail" : "outlook"; G.mailErr = ""; try { localStorage.setItem("z1pg-via", G.via); } catch (err) { /* optional */ } }
   function mailError(err, via) {
     var c = err && err.code, sv = via === "gmail" ? "Gmail" : "Microsoft 365", app = via === "gmail" ? "Gmail" : "Outlook";
@@ -1010,7 +1014,7 @@
   }
   function makeDraft() {
     var o = G.out; var ap = pgItem(); if (!o || G.sending || G.draft || !G.review || G.review.status !== "approved" || !ap || ap.state !== "approved") return;
-    var cc = (G.f.cc || "").trim(), via = mailVia(), app = via === "gmail" ? "Gmail" : "Outlook", parts = null;
+    var cc = (G.f.cc || "").trim(), via = mailVia(), app = via === "gmail" ? "Gmail" : "Outlook", parts = null, box = "";
     if (cc && !EMAIL_RE.test(cc)) { G.mailErr = "The CC address doesn't look right."; render(); return; }
     G.sending = true; G.mailErr = ""; render();
     if (via === "gmail") say("Attaching the files…");
@@ -1032,11 +1036,13 @@
       }
       var input = { to: [o.to], subject: o.subject, body: o.html, bodyType: "html" };
       if (cc) input.cc = [cc];
-      return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input);
+      // Drafts land in the signed-in Microsoft 365 mailbox; note which one, so a draft outside Karla's is flagged.
+      return mcp.callTool(MAIL_SERVER, "get_me", {}).then(function (r) { var me = (r && r.payload) || {}; box = String(me.mail || me.userPrincipalName || "").toLowerCase(); }, function () { box = ""; })
+        .then(function () { return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input); });
     }).then(function (res) {
       var p = (res && res.payload) || {}, link = p.viewUrl || p.webLink || p.weblink || p.web_link || "";
       if (via === "gmail" && !link && p.id) link = "https://mail.google.com/mail/#drafts";
-      G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false };
+      G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false, box: box };
       log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ }
       G.ghlInfo = ghlInfo(o); clearPersonal(); say("Draft ready in " + app); render(); ghlLog();
     }, function (err) {
@@ -1059,7 +1065,7 @@
     var note = "Proposal drafted in Zero1Office: " + what + (o.subject ? ' ("' + o.subject + '")' : "") + "." +
       (val && isFinite(val) ? " Lowest annual option: " + peso0(val) + "." : "") +
       (c.opt && c.opt.n ? " Option: " + c.opt.n + "." : "") + (G.review && G.review.agent ? " Checked by " + G.review.agent.n + "." : "") +
-      " Draft is in Karla's " + (G.draft && G.draft.via === "gmail" ? "Gmail" : "Outlook") + ".";
+      " Draft is in the Outlook of " + (G.draft && G.draft.box ? G.draft.box : KARLA_BOX) + ".";
     return { name: String(c.name || "").trim(), email: o.to, org: String(c.org || "").trim(), opp: (who + " · " + what).slice(0, 120), value: val && isFinite(val) ? Math.round(val) : null, note: note };
   }
   function ghlData(r) {
@@ -1329,6 +1335,15 @@
   /* ---------- Approvals: every checked proposal waits for your OK before the email is made (Paolo, 2026-11-25) ---------- */
   // Items live in S.data.approvals so they show on the Approvals page and its badge, but they hold the client's name and
   // email, so save() leaves them out of browser storage (and feed notes leave the name out): they last only while the page is open.
+  // Paolo, 2026-11-25: "once approved it will automatically saved in the draft". As soon as the proposal is approved
+  // (Maya's check passed and you pressed Approve), the email goes into the chosen mailbox's drafts on its own, once per
+  // proposal. If that fails, the error shows and the Create draft button stays for a retry. Nothing is ever sent.
+  var autoFor = null;
+  setInterval(function () {
+    var o = G.out; if (!o || G.draft || G.sending || autoFor === o || !G.review || G.review.status !== "approved") return;
+    var ap = pgItem(); if (!ap || ap.state !== "approved") return;
+    autoFor = o; say("Approved. Saving the email in your " + (mailVia() === "gmail" ? "Gmail" : "Outlook") + " drafts…"); makeDraft();
+  }, 800);
   function pgItem() { var o = G.out; return o && o.apId ? (S.data.approvals || []).filter(function (x) { return x.id === o.apId; })[0] || null : null; }
   function stripTags(h) { var d = document.createElement("div"); d.innerHTML = h.replace(/<br\s*\/?>/g, "\n"); return d.textContent; }
   function queueApproval(o) {
