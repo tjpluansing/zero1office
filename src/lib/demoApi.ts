@@ -7,7 +7,7 @@
 import type { Api, AuthEvent } from "./api";
 import { computeEffective } from "./permissions";
 import type {
-  AccessReviewData, IntegrationEvent, IntegrationRow, IntegrationRun, Policy,
+  AccessReviewData, IntegrationAlert, IntegrationEvent, IntegrationRow, IntegrationRun, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
   FollowupEvent, FollowupRow, FollowupSettings,
 } from "./types";
@@ -385,6 +385,29 @@ export function createDemoApi(): Api {
       log("integration.webhook_secret", id, { integration: id }, "integration");
       save();
       return secret;
+    },
+    async getIntegrationAlerts() {
+      if (!can("integrations.view")) return [];
+      const out: IntegrationAlert[] = [];
+      const DAY = 86_400_000;
+      for (const i of state.integrations) {
+        if (i.enabled && i.status === "error")
+          out.push({ alert_key: `error:${i.id}`, integration_id: i.id, severity: "red", title: `${i.name} is not working`, detail: i.last_error ?? "The last connection test failed." });
+        const age = i.secret && i.secret_set_at ? Math.floor((Date.now() - new Date(i.secret_set_at).getTime()) / DAY) : 0;
+        if (age > 90)
+          out.push({ alert_key: `key_age:${i.id}`, integration_id: i.id, severity: "amber", title: `Time to replace the ${i.name} key`, detail: `The key was saved ${age} days ago. Replace keys every 90 days.` });
+        const exp = i.id === "m365" && i.secret && typeof i.config.secret_expires_on === "string" && i.config.secret_expires_on
+          ? Math.ceil((new Date(i.config.secret_expires_on).getTime() - Date.now()) / DAY) : null;
+        if (exp !== null && exp <= 30)
+          out.push({ alert_key: "expiry:m365", integration_id: "m365", severity: exp <= 0 ? "red" : "amber",
+            title: exp <= 0 ? "The Microsoft 365 client secret has expired" : `The Microsoft 365 client secret expires in ${exp} days`,
+            detail: "Create a new secret in Entra ID, paste it on the Microsoft 365 card and update the expiry date." });
+      }
+      const failed = state.events.filter((e) => e.status === "failed").length;
+      if (failed) out.push({ alert_key: "sync_failed:ghl", integration_id: "ghl", severity: "red", title: `${failed} GoHighLevel update${failed === 1 ? "" : "s"} failed`, detail: "Open the sync log, fix the cause and press Retry now." });
+      const stuck = state.events.filter((e) => e.status === "retrying" && Date.now() - new Date(e.received_at).getTime() > 3600_000).length;
+      if (stuck) out.push({ alert_key: "sync_stuck:ghl", integration_id: "ghl", severity: "amber", title: `${stuck} GoHighLevel update${stuck === 1 ? " is" : "s are"} still retrying`, detail: "They have been failing for over an hour. Check the sync log." });
+      return out.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "red" ? -1 : 1));
     },
     async getSyncLog() {
       need("integrations.view");

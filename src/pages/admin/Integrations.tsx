@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { Alert, Badge, Button, Drawer, Field, Input, Modal, PageHeader, Select, Spinner, Toggle, cx, relativeTime } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
-import type { IntegrationEvent, IntegrationId, IntegrationRow, SyncLog, TestResult } from "../../lib/types";
+import type { IntegrationAlert, IntegrationEvent, IntegrationId, IntegrationRow, SyncLog, TestResult } from "../../lib/types";
 
 interface FieldDef {
   key: string;
   label: string;
   hint?: string;
-  type?: "text" | "email" | "toggle" | "select" | "number";
+  type?: "text" | "email" | "toggle" | "select" | "number" | "date";
   options?: { value: string; label: string }[];
   required?: boolean;
   placeholder?: string;
@@ -63,6 +63,7 @@ const SERVICES: ServiceDef[] = [
     fields: [
       { key: "tenant_id", label: "Directory (tenant) ID", required: true },
       { key: "client_id", label: "Application (client) ID", required: true },
+      { key: "secret_expires_on", label: "Client secret expires on", type: "date", hint: "Shown next to the secret in Entra ID. You'll get a reminder 30 days before." },
       { key: "mailbox", label: "Mailbox the app may use", type: "email", placeholder: "noreply@ask-karla.com", hint: "Use one shared mailbox, not a person's inbox." },
       { key: "send_email", label: "Allow sending email", type: "toggle" },
       { key: "read_calendar", label: "Allow reading calendars", type: "toggle" },
@@ -125,8 +126,10 @@ export default function IntegrationsPage() {
   const [rows, setRows] = useState<IntegrationRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<ServiceDef | null>(null);
+  const [alerts, setAlerts] = useState<IntegrationAlert[]>([]);
 
-  const load = useCallback(() => api.listIntegrations().then(setRows).catch((e) => setError(errorText(e))), []);
+  const load = useCallback(() => Promise.all([api.listIntegrations(), api.getIntegrationAlerts()])
+    .then(([r, a]) => { setRows(r); setAlerts(a); }).catch((e) => setError(errorText(e))), []);
   useEffect(() => { void load(); }, [load]);
 
   const connected = rows?.filter((r) => r.status === "connected").length ?? 0;
@@ -143,6 +146,26 @@ export default function IntegrationsPage() {
       </div>
 
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
+      {alerts.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {alerts.map((a) => {
+            const svc = SERVICES.find((s) => s.id === a.integration_id);
+            return (
+              <div key={a.alert_key} className={cx("flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3",
+                a.severity === "red" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50")}>
+                <AlertTriangle className={cx("h-4 w-4 shrink-0", a.severity === "red" ? "text-red-600" : "text-amber-600")} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-navy">{a.title}</div>
+                  <div className="text-xs text-slate-600">{a.detail}</div>
+                </div>
+                {svc && !a.alert_key.startsWith("sync_") && <Button onClick={() => setOpen(svc)}>Open {rows?.find((r) => r.id === svc.id)?.name ?? ""}</Button>}
+                {a.alert_key.startsWith("sync_") && <Button onClick={() => document.getElementById("sync-log")?.scrollIntoView({ behavior: "smooth" })}>Open sync log</Button>}
+              </div>
+            );
+          })}
+          <p className="text-xs text-slate-500">Super Admins are also emailed about new alerts once a day.</p>
+        </div>
+      )}
       {!rows ? <div className="grid h-40 place-items-center"><Spinner /></div> : (
         <div className="grid gap-4 lg:grid-cols-3">
           {SERVICES.map((svc) => {
@@ -169,6 +192,9 @@ export default function IntegrationsPage() {
                 </ul>
                 <div className="mt-4 space-y-1 border-t pt-3 text-xs text-slate-500">
                   <div>Last test: {row.last_tested_at ? `${relativeTime(row.last_tested_at)} · ${row.last_test_ok ? "passed" : "failed"}` : "never"}</div>
+                  {typeof row.config.secret_expires_on === "string" && row.config.secret_expires_on && (
+                    <div>Secret expires {new Date(row.config.secret_expires_on).toLocaleDateString("en-PH", { day: "numeric", month: "short", year: "numeric" })}</div>
+                  )}
                   {keyAge !== null && <div className={cx(keyAge > 90 && "font-medium text-amber-700")}>Key saved {keyAge === 0 ? "today" : `${keyAge} days ago`}{keyAge > 90 && " · time to rotate"}</div>}
                 </div>
                 <Button className="mt-4 w-full" variant={row.status === "not_connected" ? "primary" : "secondary"} onClick={() => setOpen(svc)}>
@@ -475,7 +501,7 @@ function SyncLogSection({ canEdit }: { canEdit: boolean }) {
   const shown = filter === "all" ? events : events.filter((e) => e.status === "failed" || e.status === "retrying");
 
   return (
-    <section className="mt-10">
+    <section id="sync-log" className="mt-10 scroll-mt-6">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">GoHighLevel sync log</h2>

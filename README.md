@@ -89,6 +89,7 @@ The matrix picks it up automatically.
 | Admin reset of a lost authenticator | Manage Users → Reset sign-in |
 | Admin → Integrations: GoHighLevel, Microsoft 365, Claude API with keys in Supabase Vault, test connection, pause, disconnect | migration 5, `supabase/functions/integrations`, `src/pages/admin/Integrations.tsx` |
 | GHL webhooks: signature or secret checked, each event stored once, retries with backoff, Sync log with Retry | migration 6, `supabase/functions/ghl-webhook`, Integrations page |
+| Integration alerts: banner, alert list, daily re-test and email to Super Admins, key age and Microsoft secret expiry | migration 7, `supabase/functions/integrations` (health) |
 | Written access control and password policy | `docs/policies/access-control-and-password-policy.md` |
 
 Edit the agreement wording in migration 4 before launch. To change it later, run
@@ -108,6 +109,7 @@ select cron.schedule('z1-sync-retries', '* * * * *', $$select public.process_int
 select cron.schedule('z1-sync-purge', '15 3 * * *', $$select public.purge_integration_events()$$);
 ```
 
+<<<<<<< HEAD
 ## Follow-up queue
 
 **Follow-ups** (`/followups`) lists every pending requirement or reply Ask Karla is chasing from a client or an
@@ -123,6 +125,32 @@ Escalate items that are past their due date every morning (8 AM Manila = 00:00 U
 
 ```sql
 select cron.schedule('z1-followups-overdue', '0 0 * * *', $$select public.escalate_overdue_followups()$$);
+=======
+### Daily health check and alerts
+
+Admins see a banner and an alert list on Admin → Integrations when a connection breaks, GHL updates fail or get
+stuck, webhooks go quiet for 7 days, a key is over 90 days old, or the Microsoft client secret is within 30 days
+of expiring. Once a day the `integrations` function re-tests every active connection and emails new alerts to the
+Super Admins from the Microsoft 365 mailbox (needs *Allow sending email* on that card).
+
+```bash
+supabase secrets set HEALTH_CHECK_SECRET=$(openssl rand -hex 32)
+```
+
+Turn on `pg_net`, save the same value in Vault, and schedule it (8:00 AM Manila = 00:00 UTC):
+
+```sql
+select vault.create_secret('<the same value>', 'z1_health_secret');
+select cron.schedule('z1-health-check', '0 0 * * *', $$
+  select net.http_post(
+    url := 'https://<project>.supabase.co/functions/v1/integrations',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer <anon key>',
+      'X-Health-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'z1_health_secret')),
+    body := '{}'::jsonb)
+$$);
+>>>>>>> origin/claude/project-thread-bhgdym
 ```
 
 ## Tests

@@ -1,5 +1,5 @@
 import type {
-  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult,
+  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult, IntegrationAlert,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
   FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
 } from "./types";
@@ -52,6 +52,8 @@ export interface Api {
   newWebhookSecret(id: string): Promise<string>;
   getSyncLog(id: string): Promise<SyncLog>;
   retryEvent(eventId: number): Promise<void>;
+  /** Problems with connected services; empty for people without integrations.view. */
+  getIntegrationAlerts(): Promise<IntegrationAlert[]>;
   listAudit(limit?: number): Promise<AuditRow[]>;
   exportAudit(): Promise<AuditRow[]>;
 
