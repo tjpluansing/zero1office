@@ -75,18 +75,34 @@
   window.Z1Files = { blob: blobOf, forSlot: bySlot };
 
   /* ---------- connect to the artifact's storage ---------- */
+  // Reads are hardened (v71): any snapshot shape, errors shown on the page, and a one-off read as a fallback.
+  function toRows(docs) {
+    return (docs || []).map(function (d) {
+      var raw = typeof d.data === "function" ? d.data() : d.data, o = {};
+      for (var k in (raw || {})) o[k] = raw[k]; // snapshots are frozen: copy before adding fields
+      o.id = d.id; o.ext = extOf(o.name); return o;
+    }).filter(function (o) { return o.name && o.asset; });
+  }
+  function take(snap, from) {
+    try { F.docs = toRows(snap && snap.docs); F.ready = true; F.err = ""; F.dbg = ""; }
+    catch (err) { F.ready = true; F.dbg = from + ": " + (err && err.message || err); F.err = "Your uploaded files couldn't be shown. Press Refresh, or reload the page."; }
+    rer();
+  }
+  function refresh() {
+    if (!F.db) return Promise.resolve();
+    return F.db.collection("files").get().then(function (snap) { take(snap, "read"); }, function (err) { F.ready = true; F.dbg = "read: " + (err && (err.code || err.message) || err); F.err = "Your uploaded files didn't load. Press Refresh, or reload the page."; rer(); });
+  }
   (function connect() {
     var cl = window.claude;
     if (!cl || !cl.use) { F.ready = true; return; }
-    var timer = setTimeout(function () { if (!F.ready) { F.ready = true; F.err = "Your uploaded files didn't load. Reload the page to try again."; rer(); } }, 10000);
+    var timer = setTimeout(function () { if (!F.ready) refresh(); }, 6000);
     Promise.all([cl.use("db"), cl.use("assets")]).then(function (x) {
       F.db = x[0]; F.assets = x[1];
       if (!F.db) { clearTimeout(timer); F.ready = true; rer(); return; }
-      F.db.collection("files").onSnapshot(function (snap) {
-        clearTimeout(timer); F.ready = true; F.err = "";
-        F.docs = snap.docs.map(function (d) { var o = Object.assign({}, d.data() || {}); o.id = d.id; o.ext = extOf(o.name); return o; })  // snapshots are frozen: copy before adding fields.filter(function (o) { return o.name && o.asset; });
-        rer();
-      }, function () { clearTimeout(timer); F.ready = true; F.err = "Your uploaded files didn't load. Reload the page to try again."; rer(); });
+      try {
+        F.db.collection("files").onSnapshot(function (snap) { clearTimeout(timer); take(snap, "live"); },
+          function (err) { clearTimeout(timer); F.dbg = "live: " + (err && (err.code || err.message) || err); refresh(); });
+      } catch (err) { F.dbg = "subscribe: " + (err && err.message || err); refresh(); }
       meter();
     }, function () { clearTimeout(timer); F.ready = true; rer(); });
   })();
@@ -106,9 +122,12 @@
       var body = native ? Promise.resolve(file) : file.arrayBuffer().then(function (b) { return new Blob([bufToB64(b)], { type: "text/plain" }); });
       body.then(function (blob) { return F.assets.upload(blob, { type: native || "text/plain" }); })
         .then(function (r) {
-          return F.db.collection("files").add({ name: file.name.slice(0, 180), folder: folder, size: file.size, mime: native || WRAPPED[ext] || "application/octet-stream", asset: r.id, wrap: !native, slot: "", note: "", at: new Date().toISOString(), by: who() });
+          var row = { name: file.name.slice(0, 180), folder: folder, size: file.size, mime: native || WRAPPED[ext] || "application/octet-stream", asset: r.id, wrap: !native, slot: "", note: "", at: new Date().toISOString(), by: who() };
+          return F.db.collection("files").add(row).then(function (ref) {
+            if (!F.docs.some(function (d) { return d.asset === row.asset; })) { var o = {}; for (var k in row) o[k] = row[k]; o.id = ref && ref.id; o.ext = extOf(o.name); if (o.id) F.docs = F.docs.concat([o]); }
+          });
         })
-        .then(function () { F.up = F.up.filter(function (j) { return j !== job; }); say(file.name + " uploaded"); meter(); rer(); },
+        .then(function () { F.up = F.up.filter(function (j) { return j !== job; }); say(file.name + " uploaded"); meter(); rer(); setTimeout(refresh, 1500); },
           function (err) {
             var c = err && err.code;
             fail(c === "too_large" ? "Too big to store" : c === "unsupported_type" ? "This type of file can't be stored here" : c === "quota_or_state" ? "Storage is full. Delete files you no longer need." : c === "rate_limited" ? "Too many uploads at once. Try again in a minute." : "Didn't upload. Try again.");
@@ -227,9 +246,9 @@
     list.sort(F.sort === "name" ? function (a, b) { return a.name.localeCompare(b.name); } : F.sort === "size" ? function (a, b) { return (b.size || 0) - (a.size || 0); } : function (a, b) { return String(b.at).localeCompare(String(a.at)) || a.name.localeCompare(b.name); });
     var can = !!(F.assets && F.db);
     var h = '<div class="card pad" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><div style="flex:1;min-width:220px"><h3>Files</h3><div class="muted small">One place for the team\'s templates, plan files and marketing files. Files linked to a proposal attachment are attached by the Proposal generator.</div></div>' +
-      (can ? '<button class="btn pri" type="button" data-zf="pick">Upload files</button><input type="file" id="z1fPick" multiple hidden>' : '') + '</div>';
+      (F.db ? '<button class="btn" type="button" data-zf="refresh">Refresh</button>' : '') + (can ? '<button class="btn pri" type="button" data-zf="pick">Upload files</button><input type="file" id="z1fPick" multiple hidden>' : '') + '</div>';
     if (!can && F.ready) h += '<div class="card pad small" style="margin-bottom:12px;background:var(--info-soft);border-color:transparent">You can view and save every file here. Uploading, renaming and deleting work when this page is opened on claude.ai by its owner or an editor.</div>';
-    if (F.err) h += '<p class="err" role="alert" style="font-size:12px">' + e(F.err) + '</p>';
+    if (F.err) h += '<p class="err" role="alert" style="font-size:12px">' + e(F.err) + (F.dbg ? ' <span class="muted">(' + e(F.dbg) + ')</span>' : '') + '</p>';
     var tot = all.reduce(function (a, f) { return a + (f.size || 0); }, 0);
     h += '<div class="tiles"><div class="tile"><span class="k">Files</span><span class="v">' + all.length + '</span><span class="h">' + BUILTIN.length + " built in · " + F.docs.length + ' uploaded</span></div><div class="tile"><span class="k">Size</span><span class="v">' + kb(tot) + '</span><span class="h">' + (F.usage ? kb(F.usage.bytes) + " of " + kb(F.usage.maxBytes) + " upload space used" : "Built-in files don't use upload space") + '</span></div><div class="tile"><span class="k">Linked to proposals</span><span class="v">' + F.docs.filter(function (x) { return x.slot; }).length + " of " + slots().length + '</span><span class="h">Attachment slots filled by your uploads</span></div></div>';
     if (can) h += '<div class="z1f-drop" id="z1fDrop" data-zf="pick" role="button" tabindex="0" aria-label="Upload files">Drop files here or click to upload' + (F.folder !== "All" ? " to <b>" + e(F.folder) + "</b>" : "") + '<span class="muted small">PDF, images, Excel, Word, PowerPoint, CSV and text. Up to 15 MB (20 MB for PDFs and images). Don\'t upload clients\' IDs, medical records or member lists.</span></div>';
@@ -270,6 +289,7 @@
     var a = t.dataset.zf, v = t.dataset.v;
     if (t.tagName === "SELECT") return;
     if (a === "pick") { var p = document.getElementById("z1fPick"); if (p) p.click(); return; }
+    if (a === "refresh") { refresh().then(function () { meter(); say("Files refreshed"); }); return; }
     if (a === "folder") { F.folder = v; F.edit = null; render(); return; }
     if (a === "view") { viewFile(v); return; }
     if (a === "vclose") { closeView(); return; }

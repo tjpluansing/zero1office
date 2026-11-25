@@ -568,11 +568,15 @@
   // A file uploaded in Settings > Files and linked to an attachment slot replaces the built-in one (Paolo, 2026-11-25).
   function fromRepo(list) {
     return list.map(function (f) {
-      var r = window.Z1Files && window.Z1Files.forSlot(f.slot || f.label);
-      return r ? { repo: r, path: "", name: (f.prefix || "") + r.name, label: f.label } : f;
+      var ss = f.slots || [f.slot || f.label];
+      for (var i = 0; i < ss.length; i++) {
+        var r = window.Z1Files && window.Z1Files.forSlot(ss[i]);
+        if (r) return { repo: r, path: "", name: (f.prefix && r.name.indexOf(f.prefix) !== 0 ? f.prefix : "") + r.name, label: f.label };
+      }
+      return f;
     });
   }
-  window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Prepaid Health Cards_2026_Proposal", "Maxicare_CORP_Primer", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
+  window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Prepaid Health Cards_2026_Proposal", "OPTION 1_Maxicare_SME_MPlus Plan_Standard Proposal", "OPTION 1_Maxicare_SME_MPlus Plan_Template", "OPTION 2_Maxicare_CORP_Primer", "OPTION 2_Maxicare_Corporate Set Up_Template", "OPTION 2_Maxicare_Corporate_Standard Plan", "OPTION 2_Maxicare_Prospective Corporate Account Form (PCAF)", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
     .concat(SME_OPTS.map(function (o) { return o.prop; }))
     .concat(SME_OPTS.map(function (o) { return o.tpl; }).filter(function (t, i, a) { return a.indexOf(t) === i; }));
   // Maxicare Prepaid (Paolo, 2026-11-25)
@@ -582,16 +586,21 @@
       { path: "", name: "Maxicare_Prepaid Health Cards_2026_Proposal", label: "Maxicare_Prepaid Health Cards_2026_Proposal", missing: true },
     ]);
   }
-  // Maxicare MPlus vs Corporate (Paolo, 2026-11-25), in his order. Option 1 reuses the SME MPlus files, Option 2 the Corporate files.
+  // Maxicare MPlus vs Corporate (Paolo, 2026-11-25), in his order. Each OPTION file has its own attachment slot
+  // (Paolo uploaded OPTION-specific copies); if it's empty the SME MPlus or Corporate file is used.
   function mvcFiles() {
-    var cf = corpFiles(), mp = SME_OPTS.filter(function (o) { return o.id === "mplus"; })[0];
-    function pre(p, f, label) { var g = {}; for (var k in f) g[k] = f[k]; g.name = p + f.name; g.label = label; return g; }
-    var o1 = fromRepo([{ path: "", name: mp.prop, label: mp.prop, missing: true }, { path: "", name: mp.tpl, label: mp.tpl, missing: true }]);
-    var pr = fromRepo([{ path: "", name: "Maxicare_CORP_Primer", label: "Maxicare_CORP_Primer", missing: true }])[0];
-    return [cf[0], { path: MX_FILES[2][0], name: MX_FILES[2][1], label: "Maxicare_PCCs_and_Other_Services" },
-      pre("OPTION 1_", o1[0], "OPTION 1_Maxicare_SME_MPlus Plan_Standard Proposal"), pre("OPTION 1_", o1[1], "OPTION 1_Maxicare_SME_MPlus Plan_Template"),
-      pre("OPTION 2_", pr, "OPTION 2_Maxicare_CORP_Primer"), pre("OPTION 2_", cf[3], "OPTION 2_Maxicare_Corporate Set Up_Template"),
-      pre("OPTION 2_", cf[1], "OPTION 2_Maxicare_Corporate_Standard Plan"), pre("OPTION 2_", cf[4], "OPTION 2_Maxicare_Prospective Corporate Account Form (PCAF)")];
+    var mp = SME_OPTS.filter(function (o) { return o.id === "mplus"; })[0], X = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    var L = ["OPTION 1_Maxicare_SME_MPlus Plan_Standard Proposal", "OPTION 1_Maxicare_SME_MPlus Plan_Template", "OPTION 2_Maxicare_CORP_Primer", "OPTION 2_Maxicare_Corporate Set Up_Template", "OPTION 2_Maxicare_Corporate_Standard Plan", "OPTION 2_Maxicare_Prospective Corporate Account Form (PCAF)"];
+    return fromRepo([
+      { path: MX_FILES[0][0], name: "Karla Luansing_Maxicare_HMO Pubmat.jpg", label: "Karla Luansing_Maxicare_HMO Pubmat" },
+      { path: MX_FILES[2][0], name: MX_FILES[2][1], label: "Maxicare_PCCs_and_Other_Services" },
+      { path: "", name: L[0], label: L[0], slots: [L[0], mp.prop], prefix: "OPTION 1_", missing: true },
+      { path: "", name: L[1], label: L[1], slots: [L[1], mp.tpl], prefix: "OPTION 1_", missing: true },
+      { path: "", name: L[2], label: L[2], slots: [L[2]], missing: true },
+      { path: "files/corp/corporate-set-up-template.xlsx.b64.txt", b64: true, mime: X, name: L[3] + ".xlsx", label: L[3], slots: [L[3], "Maxicare_Corporate Set Up_Template"], prefix: "OPTION 2_" },
+      { path: SME_PATHS["Maxicare_Corporate_Standard Plan"], name: L[4] + ".pdf", label: L[4], slots: [L[4], "Maxicare_Corporate_Standard Plan"], prefix: "OPTION 2_" },
+      { path: SME_PATHS["Maxicare_Prospective Corporate Account Form (PCAF)"], name: L[5] + ".pdf", label: L[5], slots: [L[5], "Maxicare_Prospective Corporate Account Form (PCAF)"], prefix: "OPTION 2_" },
+    ]);
   }
   function corpFiles() {
     return fromRepo([
