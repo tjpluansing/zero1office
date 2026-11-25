@@ -153,6 +153,118 @@
     B.noDummy = true; store(DATA_KEY, B);
   }
 
+
+  /* ---------- SOAs from Karla's Maxicare Gmail (Paolo, 2026-11-25: "For SOAs and Billing refer to karlaluansing.maxicare@gmail.com") ----------
+     Maxicare emails every billing statement with a subject like
+     "Billing Statement Number: BS1000232102 Due: December 10, 2026 for Account 9700810995 - SIMPLY SOURCE PH OPC".
+     Find SOAs in Gmail reads those subjects (Gmail search_threads, read-only) and lists each statement once. You tick which
+     ones to add; nothing is added on its own. The amount sits in the PDF, so it is left for you to fill in. Only the
+     statement number, account name, dates and a link to the email are kept, in this browser, like every other SOA. */
+  var GMAIL = "Gmail", GM_KEY = "zero1office:gmail-soa:on";
+  var GM = { busy: false, err: "", list: [], pick: {}, user: {}, next: "", pages: 0, at: 0, auto: false };
+  var GM_Q = 'subject:("billing statement number" OR "billing statement no")';
+  var MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+  function isoOf(txt) {
+    var m = /([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/.exec(txt || ""); if (!m) return null;
+    var mo = MONTHS[m[1].toLowerCase()]; if (!mo) return null;
+    return m[3] + "-" + String(mo).padStart(2, "0") + "-" + String(m[2]).padStart(2, "0");
+  }
+  function localIso(t) { var d = new Date(t); if (isNaN(d)) return null; return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+  /** One SOA from an email subject, or null when the subject isn't a Maxicare billing statement. */
+  function gmParse(subject) {
+    var sub = String(subject || "").replace(/\[\s*ref:.*$/i, "").replace(/\s+/g, " ").trim();
+    var no = /(?:^|[^A-Z0-9])(BS\d{6,})\b/i.exec(sub); if (!no || !/billing statement/i.test(sub)) return null;
+    var due = /Due:?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i.exec(sub);
+    var acct = /\b\d{8,12}(?:\s*-\s*\d{8,12})*\s+[-–]\s+(.+)$/.exec(sub);
+    var name = acct ? acct[1].trim() : (/\s[-–]\s+([^-–]+)$/.exec(sub) || [])[1] || "";
+    return { no: no[1].toUpperCase(), due: due ? isoOf(due[1]) : null, name: name.replace(/\s+/g, " ").slice(0, 120).trim() };
+  }
+  function gmThreads(res) {
+    var p = res && res.payload; if (p && Array.isArray(p.threads)) return p;
+    var out = { threads: [] };
+    if (res && Array.isArray(res.content)) res.content.forEach(function (b) { if (b && b.type === "text") { try { var j = JSON.parse(b.text); if (j && Array.isArray(j.threads)) { out.threads = out.threads.concat(j.threads); if (j.nextPageToken) out.nextPageToken = j.nextPageToken; } } catch (err) { /* skip */ } } });
+    return out;
+  }
+  function gmHave(no) { return B.soas.some(function (x) { return x.provider.toLowerCase() === "maxicare" && String(x.soa_no).toUpperCase() === no; }); }
+  function gmFresh(x) { return x.due ? daysBetween(x.due) <= 30 : !!x.on && daysBetween(x.on) <= 45; } // due in the last 30 days or later (or emailed in the last 45 days when no due date): ticked by default
+  function gmScan(more) {
+    if (GM.busy) return;
+    var cl = window.claude;
+    if (!cl || !cl.use) { GM.err = "Open Zero1Office on claude.ai to read Gmail."; drawModal(); render(); return; }
+    if (!more) { GM.list = []; GM.pick = {}; GM.user = {}; GM.next = ""; GM.pages = 0; }
+    GM.busy = true; GM.err = ""; drawModal(); if (S.view === "billing") render();
+    cl.use("mcp").then(function (mcp) {
+      if (!mcp) throw { code: "unavailable_here" };
+      var input = { query: GM_Q, pageSize: 50, view: "THREAD_VIEW_MINIMAL" }; if (more && GM.next) input.pageToken = GM.next;
+      return mcp.callTool(GMAIL, "search_threads", input);
+    }).then(function (res) {
+      var r = gmThreads(res), seen = {}; GM.list.forEach(function (x) { seen[x.no] = x; });
+      (r.threads || []).forEach(function (t) {
+        (t.messages || []).forEach(function (msg) {
+          var x = gmParse(msg && msg.subject); if (!x) return;
+          var url = [msg.viewUrl, t.viewUrl].filter(function (u) { return /^https:\/\/mail\.google\.com\//.test(u || ""); })[0] || "";
+          var day = localIso(msg.date), old = seen[x.no];
+          if (old) { if (!old.due && x.due) old.due = x.due; if (day && (!old.on || day < old.on)) old.on = day; if (!old.name && x.name) old.name = x.name; return; }
+          x.on = day; x.url = url; x.have = gmHave(x.no); seen[x.no] = x; GM.list.push(x);
+        });
+      });
+      GM.list.forEach(function (x) { if (!x.have && !GM.user[x.no]) GM.pick[x.no] = gmFresh(x); });
+      GM.list.sort(function (a, b) { return String(b.due || b.on || "").localeCompare(String(a.due || a.on || "")); });
+      GM.next = r.nextPageToken || ""; GM.pages++; GM.at = Date.now(); GM.busy = false;
+      try { localStorage.setItem(GM_KEY, "1"); } catch (err) { /* optional */ }
+      drawModal(); if (S.view === "billing") render();
+    }, function (err) {
+      GM.busy = false; var c = err && err.code;
+      GM.err = c === "needs_reauth" ? "The Gmail sign-in expired. Reconnect Gmail in claude.ai Settings, Connectors, then try again." :
+        c === "server_not_connected" || c === "selection_required" ? "Gmail isn't connected for you. Connect karlaluansing.maxicare@gmail.com in claude.ai Settings, Connectors." :
+        c === "not_in_manifest" ? "Gmail search isn't switched on for this page yet." :
+        c === "not_granted" || c === "consent_required" ? "Gmail was turned off for this page. Allow it in the page's permissions, then try again." :
+        c === "unavailable_here" ? "Open Zero1Office on claude.ai to read Gmail." :
+        c === "rate_limited" ? "Gmail is busy. Wait a minute, then try again." : "Gmail didn't answer" + (c ? " (" + c + ")" : "") + ". Try again.";
+      drawModal(); if (S.view === "billing") render();
+    });
+  }
+  function gmNew() { return GM.list.filter(function (x) { return !x.have && !gmHave(x.no); }); }
+  function gmailBar() {
+    if (!can("billing.create")) return "";
+    var on = false; try { on = localStorage.getItem(GM_KEY) === "1"; } catch (err) { /* optional */ }
+    if (on && !GM.auto && !GM.busy && !GM.list.length && !GM.err) { GM.auto = true; setTimeout(function () { gmScan(false); }, 0); }
+    var h = '<div class="card pad" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:12.5px"><b>Maxicare SOAs from Gmail</b>';
+    if (GM.busy) h += '<span class="muted">Reading Karla\'s Maxicare Gmail…</span>';
+    else if (GM.err) h += '<span>' + e(GM.err) + '</span><button class="btn sm" data-z1="gmail">Try again</button>';
+    else if (GM.at) { var n = gmNew().length; h += '<span class="muted">' + (n ? n + " statement" + (n === 1 ? "" : "s") + " in Gmail not in the tracker yet" : "Every statement found in Gmail is in the tracker") + ' · checked ' + e(new Date(GM.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) + '</span>' + (n ? '<button class="btn sm pri" data-z1="gmail">Review and add</button>' : '<button class="btn sm" data-z1="gmail">Open</button>'); }
+    else h += '<span class="muted">Maxicare emails each billing statement to karlaluansing.maxicare@gmail.com. Read them here instead of typing them in.</span><button class="btn sm pri" data-z1="gmail">Find SOAs in Gmail</button>';
+    return h + '</div>';
+  }
+  function gmailModal() {
+    var rows = GM.list, nNew = 0, nPick = 0;
+    rows.forEach(function (x) { x.have = x.have || gmHave(x.no); if (!x.have) { nNew++; if (GM.pick[x.no]) nPick++; } });
+    var body = "";
+    if (GM.err) body = '<p class="err" role="alert">' + e(GM.err) + '</p>';
+    if (!rows.length) body += GM.busy ? '<p class="muted">Reading Karla\'s Maxicare Gmail…</p>' : (GM.err ? "" : '<p class="muted">No Maxicare billing statements found yet.</p>');
+    else body += '<p class="small">Found <b>' + rows.length + '</b> billing statement' + (rows.length === 1 ? "" : "s") + ', <b>' + nNew + '</b> not in the tracker. Statements due in the last 30 days or later are ticked. Older ones are left unticked, since most are likely paid. Each statement shows once, even when it was emailed several times.</p>' +
+      '<div class="actions" style="margin:0 0 8px"><button type="button" class="btn sm" data-z1="gmailall" data-v="on">Tick all new</button><button type="button" class="btn sm" data-z1="gmailall" data-v="off">Untick all</button></div>' +
+      '<div class="tblwrap" style="max-height:52vh;overflow:auto"><table class="t" style="min-width:640px"><tr><th></th><th>SOA</th><th>Account</th><th>Emailed</th><th>Due</th><th></th></tr>' + rows.map(function (x) {
+        var od = x.due && daysBetween(x.due) > 0;
+        return '<tr><td>' + (x.have ? '<span class="s s-ok">Added</span>' : '<input type="checkbox" data-gmno="' + e(x.no) + '"' + (GM.pick[x.no] ? " checked" : "") + ' aria-label="Add ' + e(x.no) + '">') + '</td><td><b>' + e(x.no) + '</b></td><td>' + e(x.name || "—") + '</td><td>' + fmtDate(x.on) + '</td><td>' + fmtDate(x.due) + (od ? ' <span class="muted small">(' + daysBetween(x.due) + ' d ago)</span>' : "") + '</td><td>' + (x.url ? '<a class="small" href="' + e(x.url) + '" target="_blank" rel="noopener">Email</a>' : "") + '</td></tr>';
+      }).join("") + '</table></div>';
+    if (GM.next) body += '<div style="margin-top:8px"><button type="button" class="btn sm" data-z1="gmailmore"' + (GM.busy ? " disabled" : "") + '>' + (GM.busy ? "Loading…" : "Load older emails") + '</button></div>';
+    body += '<p class="muted" style="font-size:11px;margin:8px 0 0">Read-only: nothing changes in Gmail. The amount is in the PDF attached to each email, so it starts blank for you to fill in. Only the statement number, account name, dates and the email link are kept, in this browser.</p>';
+    return '<form class="modal z1-wide" role="dialog" aria-modal="true" aria-label="SOAs from Gmail" data-z1form="gmail">' + head("SOAs from Karla's Maxicare Gmail") +
+      '<div class="mbd">' + body + errLine() + '</div><div class="mft"><button type="button" class="btn" data-z1="gmailrefresh" style="margin-right:auto"' + (GM.busy ? " disabled" : "") + '>Check again</button><button type="button" class="btn" data-z1="close">Close</button><button type="submit" class="btn pri"' + (nPick && !GM.busy ? "" : " disabled") + '>Add ' + nPick + ' SOA' + (nPick === 1 ? "" : "s") + '</button></div></form>';
+  }
+  function gmImport() {
+    var add = GM.list.filter(function (x) { return GM.pick[x.no] && !gmHave(x.no); }), n = 0;
+    add.forEach(function (x, i) {
+      var r = Object.assign(blank(), { id: "s" + Date.now() + "g" + i, soa_no: x.no, provider: "Maxicare", account_name: x.name || "Account in email", amount: 0,
+        released_on: x.on || null, due_on: x.due && x.on && x.due < x.on ? null : x.due, gmail_url: x.url || null, notes: "From Gmail. Amount is in the PDF attached to the email." });
+      writeSoa(r); x.have = true; n++;
+    });
+    commit(n ? "Added " + n + " SOA" + (n === 1 ? "" : "s") + " from Gmail" : "Nothing new to add");
+    drawModal();
+  }
+  document.addEventListener("change", function (ev) { var no = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-gmno"); if (!no) return; GM.pick[no] = ev.target.checked; GM.user[no] = 1; drawModal(); }, true);
+
   /* ---------- page state ---------- */
   var Z = { tab: "soas", fStage: "all", fProv: "all", fNeed: false, q: "", modal: null, err: "", step: null };
 
@@ -164,12 +276,12 @@
     var btns = "";
     if (Z.tab === "soas") {
       if (can("billing.export")) btns += '<button class="btn sm" data-z1="export">Export CSV</button>';
-      if (can("billing.create")) btns += '<button class="btn sm" data-z1="import">Import CSV</button><button class="btn sm pri" data-z1="newsoa">Add SOA</button>';
+      if (can("billing.create")) btns += '<button class="btn sm" data-z1="gmail">Find SOAs in Gmail</button><button class="btn sm" data-z1="import">Import CSV</button><button class="btn sm pri" data-z1="newsoa">Add SOA</button>';
     } else if (can("billing.create")) btns += '<button class="btn sm pri" data-z1="newpayout">Record payout</button>';
     var tabs = '<div class="chips"><button class="chip" data-z1="tab" data-v="soas" aria-pressed="' + (Z.tab === "soas") + '">SOAs (' + B.soas.length + ')</button>' +
       '<button class="chip" data-z1="tab" data-v="payouts" aria-pressed="' + (Z.tab === "payouts") + '">Payouts and Karla\'s receipts (' + B.payouts.length + ')</button></div>';
     return '<div class="ph"><div><h2>Billing & SOA</h2><p>Every SOA from release to client payment, provider receipt, 2307, commission and Karla\'s receipt. Kept in this browser.</p></div><div class="actions">' + btns + '</div></div>' +
-      tabs + (Z.tab === "soas" ? soaList() : payoutList());
+      (Z.tab === "soas" ? gmailBar() : "") + tabs + (Z.tab === "soas" ? soaList() : payoutList());
   }
 
   function soaList() {
@@ -248,6 +360,7 @@
     else if (m.kind === "payoutform") h = payoutForm(m.row);
     else if (m.kind === "link") h = linkModal(payout(m.id));
     else if (m.kind === "import") h = importModal();
+    else if (m.kind === "gmail") h = gmailModal();
     else if (m.kind === "export") h = '<div class="modal z1-wide" role="dialog" aria-modal="true" aria-label="Export SOAs">' + head("Export SOAs (" + B.soas.length + ")") +
       '<div class="mbd"><p class="small">Copy this and paste it into Excel or Google Sheets.</p><pre class="z1-pre" id="z1Csv">' + e(m.csv) + '</pre></div>' +
       '<div class="mft"><button class="btn" data-z1="close">Close</button><button class="btn pri" data-z1="copycsv">Copy CSV</button></div></div>';
@@ -288,6 +401,7 @@
       kv("Provider receipt", e(s.provider_receipt_no || "—") + (s.provider_receipt_on ? " · " + fmtDate(s.provider_receipt_on) : "")) +
       kv("CWT / 2307", s.cwt_applicable ? peso(s.cwt_amount) + " · 2307 " + (s.form_2307_on ? fmtDate(s.form_2307_on) : "missing") : "Not applicable") +
       kv("Commission", (s.commission_rate != null ? (Math.round(s.commission_rate * 10000) / 100) + "% · " : "") + peso(s.commission_expected) + " expected" + (s.commission_amount != null ? " · " + peso(s.commission_amount) + " received" : "")) +
+      (s.gmail_url ? kv("Gmail", '<a href="' + e(s.gmail_url) + '" target="_blank" rel="noopener">Open the SOA email</a>') : "") +
       kv("GoHighLevel", s.ghl_link ? '<a href="' + e(s.ghl_link) + '" target="_blank" rel="noopener">Open in GHL</a>' : "—") + '</div>' +
       (s.notes ? '<p class="small"><b>Notes:</b> ' + e(s.notes) + '</p>' : "") +
       '<div class="z1-box"><div class="z1-sect">Timeline and follow-ups</div>' +
@@ -476,6 +590,10 @@
       case "newpayout": openModal({ kind: "payoutform", row: { provider: "Maxicare" } }); return;
       case "editpayout": openModal({ kind: "payoutform", row: Object.assign({}, payout(m.id)) }); return;
       case "import": openModal({ kind: "import" }); return;
+      case "gmail": openModal({ kind: "gmail" }); if (!GM.list.length || GM.err) gmScan(false); return;
+      case "gmailmore": gmScan(true); return;
+      case "gmailrefresh": gmScan(false); return;
+      case "gmailall": GM.list.forEach(function (x) { if (!x.have) { GM.pick[x.no] = v === "on"; GM.user[x.no] = 1; } }); drawModal(); return;
       case "link": openModal({ kind: "link", id: m.id }); return;
       case "backpayout": openModal({ kind: "payout", id: m.id }); return;
       case "gopayouts": closeModal(); Z.tab = "payouts"; render(); return;
@@ -508,6 +626,7 @@
     ev.preventDefault(); ev.stopPropagation();
     var kind = ev.target.getAttribute("data-z1form"), m = Z.modal;
     try {
+      if (kind === "gmail") { gmImport(); return; }
       if (kind === "note") {
         var body = val("z1NoteBody"); if (!body) throw new Error("Write the follow-up or note first.");
         addEvent(m.id, document.getElementById("z1NoteKind").value, body); commit(); drawModal(); return;
