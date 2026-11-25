@@ -52,9 +52,28 @@ revoke all on public.followup_settings from anon, authenticated;
 grant select, update on public.followup_settings to authenticated;
 create policy followup_settings_select on public.followup_settings for select to authenticated
   using (public.has_permission('followups.view'));
+-- Karla (followups.approve) owns the chase rules; admins can change them too.
 create policy followup_settings_update on public.followup_settings for update to authenticated
-  using (public.has_permission('admin_settings.edit'))
-  with check (public.has_permission('admin_settings.edit'));
+  using (public.has_permission('followups.approve') or public.has_permission('admin_settings.edit'))
+  with check (public.has_permission('followups.approve') or public.has_permission('admin_settings.edit'));
+
+create or replace function public.followup_settings_audit()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.updated_at := now();
+  insert into audit_log (actor_id, actor_email, action, target_type, details)
+  values (auth.uid(), (select email from profiles where id = auth.uid()), 'followups.settings_changed', 'followups',
+          jsonb_build_object(
+            'chase_every_days', jsonb_build_array(old.chase_every_days, new.chase_every_days),
+            'max_attempts', jsonb_build_array(old.max_attempts, new.max_attempts),
+            'escalate_overdue_days', jsonb_build_array(old.escalate_overdue_days, new.escalate_overdue_days)));
+  return new;
+end;
+$$;
+create trigger followup_settings_audit before update on public.followup_settings
+  for each row execute function public.followup_settings_audit();
 
 -- ---------------------------------------------------------------------
 -- Items

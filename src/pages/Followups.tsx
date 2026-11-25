@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, Bot, CheckCircle2, Clipboard, ClipboardCheck, Download, Pencil, Plus, RotateCcw, Search, Send, Trash2, XCircle,
+  AlertTriangle, Bot, SlidersHorizontal, CheckCircle2, Clipboard, ClipboardCheck, Download, Pencil, Plus, RotateCcw, Search, Send, Trash2, XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
@@ -9,7 +9,7 @@ import {
 import { api, errorText } from "../lib/api";
 import {
   BUCKET_LABEL, CHANNEL_LABEL, DEFAULT_SETTINGS, KIND_LABEL, MINIMAL_TEXT_ERROR, QUICK_ADD, STATUS_LABEL, STATUS_TONE,
-  type Bucket, bucketOf, daysBetween, felixDraft, hasLongNumber, isClosed, sortQueue, todayIso,
+  type Bucket, bucketOf, daysBetween, felixDraft, hasLongNumber, isClosed, settingsError, sortQueue, todayIso,
 } from "../lib/followups";
 import type {
   ClientRow, FollowupChannel, FollowupEvent, FollowupInput, FollowupKind, FollowupRow, FollowupSettings, FollowupStatus,
@@ -45,6 +45,8 @@ export default function FollowupsPage() {
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partial<FollowupRow> | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const canRules = can("followups.approve") || can("admin_settings.edit");
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +103,7 @@ export default function FollowupsPage() {
       <PageHeader title="Follow-ups"
         description={`Pending requirements and replies from clients and insurers. Felix drafts each chase; after ${settings.max_attempts} tries with no reply it goes to Karla.`}
         actions={<>
+          {canRules && <Button onClick={() => setRulesOpen(true)}><SlidersHorizontal className="h-4 w-4" /> Chase rules</Button>}
           {can("followups.export") && <Button onClick={exportCsv}><Download className="h-4 w-4" /> Export</Button>}
           {can("followups.create") && <Button variant="primary" onClick={() => setEditing({ party: "client", kind: "document", channel: "email" })}>
             <Plus className="h-4 w-4" /> Add follow-up</Button>}
@@ -179,6 +182,10 @@ export default function FollowupsPage() {
         <FollowupDrawer row={open} client={clientById.get(open.client_id ?? "") ?? null} who={who(open)} settings={settings}
           onClose={() => setOpenId(null)} onChanged={load} onEdit={() => setEditing(open)}
           onDeleted={() => { setOpenId(null); void load(); }} />
+      )}
+      {rulesOpen && (
+        <RulesModal settings={settings} onClose={() => setRulesOpen(false)}
+          onSaved={() => { setRulesOpen(false); void load(); }} />
       )}
       {editing && (
         <FollowupForm row={editing} clients={clients} onClose={() => setEditing(null)}
@@ -527,6 +534,46 @@ function FollowupForm({ row, clients, onClose, onSaved }: {
           <span className="text-sm"><b>Felix drafts the messages</b><span className="block text-xs text-slate-500">Turn off if this one needs a personal touch.</span></span>
           <Toggle checked={f.felix_drafts ?? true} onChange={(v) => set("felix_drafts", v)} label="Felix drafts" />
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Chase rules (Karla or an admin)
+// ---------------------------------------------------------------------
+function RulesModal({ settings, onClose, onSaved }: {
+  settings: FollowupSettings; onClose: () => void; onSaved: () => void;
+}) {
+  const [s, setS] = useState(settings);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const invalid = settingsError(s);
+  const num = (k: keyof FollowupSettings) => (e: { target: { value: string } }) =>
+    setS((x) => ({ ...x, [k]: e.target.value === "" ? NaN : Number(e.target.value) }));
+  async function save() {
+    setBusy(true); setError(null);
+    try { await api.saveFollowupSettings(s); onSaved(); }
+    catch (e) { setError(errorText(e)); setBusy(false); }
+  }
+  return (
+    <Modal title="Chase rules" onClose={onClose} footer={<>
+      <Button onClick={onClose}>Cancel</Button>
+      <Button variant="primary" loading={busy} disabled={!!invalid} onClick={save}>Save</Button>
+    </>}>
+      <div className="grid gap-3">
+        {error && <Alert>{error}</Alert>}
+        <Field label="Working days between chases" hint="Weekends are skipped. Default 2.">
+          <Input type="number" min={1} max={30} value={Number.isNaN(s.chase_every_days) ? "" : s.chase_every_days} onChange={num("chase_every_days")} />
+        </Field>
+        <Field label="Tries before it goes to Karla" hint="Default 3.">
+          <Input type="number" min={1} max={20} value={Number.isNaN(s.max_attempts) ? "" : s.max_attempts} onChange={num("max_attempts")} />
+        </Field>
+        <Field label="Days past the due date before it goes to Karla" hint="Checked every morning. 0 means on the due date. Default 2.">
+          <Input type="number" min={0} max={60} value={Number.isNaN(s.escalate_overdue_days) ? "" : s.escalate_overdue_days} onChange={num("escalate_overdue_days")} />
+        </Field>
+        {invalid && <p className="text-xs text-red-600">{invalid}</p>}
+        <p className="text-xs text-slate-500">New rules apply from the next chase. Every change is recorded in the audit log.</p>
       </div>
     </Modal>
   );

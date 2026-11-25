@@ -219,6 +219,12 @@ export function createSupabaseApi(): Api {
       return must(await sb.from("followup_settings").select("chase_every_days,max_attempts,escalate_overdue_days")
         .single()) as FollowupSettings;
     },
+    async saveFollowupSettings(s) {
+      const rows = must(await sb.from("followup_settings").update({
+        chase_every_days: s.chase_every_days, max_attempts: s.max_attempts, escalate_overdue_days: s.escalate_overdue_days,
+      }).eq("id", true).select("id"));
+      if (!rows?.length) throw new Error("Only Karla or an admin can change the chase rules.");
+    },
     async saveFollowup(row) {
       const { id, ...fields } = row;
       if (id) must(await sb.from("followups").update(fields).eq("id", id));

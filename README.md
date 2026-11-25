@@ -120,7 +120,7 @@ Only users with `followups.approve` (Karla, Super Admins) can waive or cancel a 
 
 Only a short description of what is missing is stored. ID, card, account and phone numbers are refused, and
 documents go straight to the insurer. The rules live in `followup_settings` (`chase_every_days`,
-`max_attempts`, `escalate_overdue_days`) and can be changed by anyone with `admin_settings.edit`.
+`max_attempts`, `escalate_overdue_days`). Karla or an admin changes them with **Chase rules** on the Follow-ups page; each change is in the audit log.
 Escalate items that are past their due date every morning (8 AM Manila = 00:00 UTC):
 
 ```sql

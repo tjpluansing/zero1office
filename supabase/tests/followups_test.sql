@@ -103,6 +103,12 @@ select (set_followup_status('00000000-0000-0000-0000-0000000000f2', 'waived', 'M
 select pg_temp.check((select status = 'waived' from followups where id = '00000000-0000-0000-0000-0000000000f2'),
   'Karla can waive');
 select pg_temp.check((select count(*) = 2 from export_followups()), 'Karla can export');
+update followup_settings set chase_every_days = 3, max_attempts = 4;
+select pg_temp.check((select chase_every_days = 3 and max_attempts = 4 from followup_settings), 'Karla can change the chase rules');
+reset role;
+select pg_temp.check((select count(*) = 1 from audit_log where action = 'followups.settings_changed'
+  and details->'max_attempts' = '[3,4]'), 'rule changes are in the audit log');
+set role authenticated;
 
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.expect_error($$select set_followup_status('00000000-0000-0000-0000-0000000000f2', 'open')$$,

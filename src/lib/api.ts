@@ -67,6 +67,8 @@ export interface Api {
   listFollowups(): Promise<FollowupRow[]>;
   listFollowupEvents(id: string): Promise<FollowupEvent[]>;
   getFollowupSettings(): Promise<FollowupSettings>;
+  /** Chase rules. Karla (followups.approve) or admins (admin_settings.edit). */
+  saveFollowupSettings(s: FollowupSettings): Promise<void>;
   /** Creates (no id) or edits the details of an item. Status and counters have their own calls. */
   saveFollowup(row: FollowupInput): Promise<void>;
   /** The assistant sent a chase. Escalates to Karla after the max number of tries. */

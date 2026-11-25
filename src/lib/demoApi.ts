@@ -12,7 +12,7 @@ import type {
   FollowupEvent, FollowupRow, FollowupSettings,
 } from "./types";
 import {
-  CLOSED, DEFAULT_SETTINGS, MINIMAL_TEXT_ERROR, addBusinessDays, afterChase, daysBetween, hasLongNumber, todayIso,
+  CLOSED, DEFAULT_SETTINGS, settingsError, MINIMAL_TEXT_ERROR, addBusinessDays, afterChase, daysBetween, hasLongNumber, todayIso,
 } from "./followups";
 
 const P = (page: string, page_label: string, action: Action, description: string, sort: number): Permission =>
@@ -569,6 +569,18 @@ export function createDemoApi(): Api {
       return state.followupEvents.filter((e) => e.followup_id === id).sort((a, b) => b.at.localeCompare(a.at));
     },
     async getFollowupSettings() { need("followups.view"); return { ...state.followupSettings }; },
+    async saveFollowupSettings(s) {
+      await wait();
+      if (!can("followups.approve") && !can("admin_settings.edit")) throw new Error("Only Karla or an admin can change the chase rules.");
+      const bad = settingsError(s);
+      if (bad) throw new Error(bad);
+      const before = state.followupSettings;
+      state.followupSettings = { ...s };
+      log("followups.settings_changed", null, {
+        chase_every_days: [before.chase_every_days, s.chase_every_days], max_attempts: [before.max_attempts, s.max_attempts],
+        escalate_overdue_days: [before.escalate_overdue_days, s.escalate_overdue_days] }, "followups");
+      save();
+    },
     async saveFollowup(row) {
       await wait();
       if ([row.title, row.notes].some(hasLongNumber)) throw new Error(MINIMAL_TEXT_ERROR);

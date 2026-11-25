@@ -11,6 +11,15 @@ import type {
 
 export const DEFAULT_SETTINGS: FollowupSettings = { chase_every_days: 2, max_attempts: 3, escalate_overdue_days: 2 };
 
+/** Same limits as the checks on public.followup_settings. */
+export function settingsError(s: FollowupSettings): string | null {
+  const ok = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
+  if (!ok(s.chase_every_days, 1, 30)) return "Days between chases must be 1 to 30.";
+  if (!ok(s.max_attempts, 1, 20)) return "Tries before Karla must be 1 to 20.";
+  if (!ok(s.escalate_overdue_days, 0, 60)) return "Days past due must be 0 to 60.";
+  return null;
+}
+
 export const KIND_LABEL: Record<FollowupKind, string> = {
   document: "Document / requirement",
   signature: "Signature",
