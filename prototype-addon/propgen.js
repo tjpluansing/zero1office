@@ -771,6 +771,34 @@
       }).then(function (b) { box.remove(); return b; }, function (err) { box.remove(); throw err; });
     });
   }
+  // PDF preview (Paolo, 2026-11-25): the same A4 pages the PDF is made from, shown before anyone approves
+  function previewPdf(o) {
+    if (!o || !o.blocks) { say("Generate the proposal first"); return; }
+    var old = document.getElementById("pgPrev"); if (old) old.remove();
+    var f = o.files.filter(function (x) { return x.gen; })[0], scrim = document.createElement("div");
+    scrim.id = "pgPrev"; scrim.setAttribute("role", "dialog"); scrim.setAttribute("aria-modal", "true"); scrim.setAttribute("aria-label", "PDF preview");
+    scrim.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(10,20,40,.72);display:flex;flex-direction:column;align-items:center;overflow:auto;padding:14px 10px 40px";
+    scrim.innerHTML = "<style>" + PDF_CSS + PAGE_CSS + '#pgPrev .pgpage{box-shadow:0 4px 18px rgba(0,0,0,.35);margin-bottom:16px}#pgPrev .pgpages{background:transparent}</style>' +
+      '<div style="position:sticky;top:0;z-index:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:10px;padding:8px 12px;margin-bottom:12px;max-width:820px;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.25)"><b style="color:#002C6C">PDF preview</b><span class="muted small" id="pgPrevInfo">' + e(f ? f.name : "") + ' · laying out pages…</span><span style="flex:1"></span><button class="btn sm" type="button" data-pgprevclose>Close ✕</button></div>' +
+      '<div id="pgPrevWrap" style="position:relative"><div class="pgpages" style="transform-origin:top left"></div></div>';
+    document.body.appendChild(scrim);
+    var host = scrim.querySelector(".pgpages"), wrap = scrim.querySelector("#pgPrevWrap");
+    var probe = document.createElement("div"); probe.innerHTML = [PDF_IMG.logo, PDF_IMG.banner, PDF_IMG.sig, PDF_IMG.bear].map(function (s) { return '<img src="' + s + '" alt="">'; }).join(""); probe.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden"; scrim.appendChild(probe);
+    imagesReady(probe).then(function () {
+      var pages = paginate(o, host);
+      function fit() { var sc = Math.min(1, (scrim.clientWidth - 20) / PG.w); host.style.transform = "scale(" + sc + ")"; wrap.style.width = PG.w * sc + "px"; wrap.style.height = host.offsetHeight * sc + "px"; }
+      fit(); window.addEventListener("resize", fit); scrim._fit = fit;
+      var info = scrim.querySelector("#pgPrevInfo"); if (info) info.textContent = (f ? f.name + " · " : "") + pages.length + " page" + (pages.length === 1 ? "" : "s") + " · what the client will get";
+      scrim.querySelector("[data-pgprevclose]").focus();
+    });
+  }
+  function closePreview() { var s = document.getElementById("pgPrev"); if (s) { if (s._fit) window.removeEventListener("resize", s._fit); s.remove(); } }
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest && ev.target.closest("[data-pgprev],[data-pgprevclose]"); if (!t) { if (ev.target && ev.target.id === "pgPrev") closePreview(); return; }
+    ev.stopPropagation(); ev.preventDefault();
+    if (t.hasAttribute("data-pgprevclose")) closePreview(); else previewPdf(G.out);
+  }, true);
+  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && document.getElementById("pgPrev")) { ev.stopPropagation(); closePreview(); } }, true);
   // After the draft is made, drop the client's details from the form; the email stays on screen until "Start a new proposal".
   function clearPersonal() { G.f = { region: G.f.region, prov: G.f.prov, city: G.f.city }; G.members = []; }
   function log(status) {
@@ -869,7 +897,7 @@
   function approvalBox(ap) {
     if (!ap) return "";
     var st = ap.state, h = '<div class="z1-box" role="status"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Your approval</b><span class="sp" style="flex:1"></span>' + apState(st) + '</div>';
-    if (st === "waiting") h += '<span class="small">The proposal is in Approvals. Once you approve it there, you can create the Outlook draft here.</span><button class="btn sm pri" style="justify-self:start" data-go="approvals">Open approvals</button>';
+    if (st === "waiting") h += '<span class="small">The proposal is in Approvals. Once you approve it there, you can create the Outlook draft here.</span><div class="actions"><button class="btn sm pri" data-go="approvals">Open approvals</button><button class="btn sm" type="button" data-pgprev>Preview the PDF</button></div>';
     else if (st === "changes") h += '<span class="small">You asked for changes' + (ap.note ? ': “' + e(ap.note) + '”' : '') + '. Edit the details and generate it again.</span>';
     else if (st === "declined") h += '<span class="small">You declined this proposal, so no email will be made. Edit the details to start over.</span>';
     else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook draft.</span>';
@@ -881,7 +909,8 @@
       apItem = function (a) {
         var h = apItem0(a); if (!a.pg) return h;
         return h.replace("Pia's pre-send check", e(nameOf(a.who)) + "'s check").replace(/>Approve and send to 1</, ">Approve<")
-          .replace(/<button class="btn" data-act="test"[^>]*>[^<]*<\/button>/, "").replace(/>Send now</, ">Create the Outlook draft<");
+          .replace(/<button class="btn" data-act="test"[^>]*>[^<]*<\/button>/, "").replace(/>Send now</, ">Create the Outlook draft<")
+          .replace(/(<div class="actions"><button class="btn pri" data-act="(?:approve|sendnow)")/, (G.out && G.out.apId === a.id && G.out.blocks ? '<div class="actions" style="margin-bottom:6px"><button class="btn" type="button" data-pgprev>Preview the PDF</button></div>' : "") + "$1");
       };
     }
     if (typeof save === "function") {
