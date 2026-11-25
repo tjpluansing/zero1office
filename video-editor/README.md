@@ -8,7 +8,7 @@ Turns a raw phone clip of Karla into a ready-to-post 9:16 Reel / TikTok / Short:
 - Adds a hook title for the first seconds and a navy end card ("Message Ask Karla")
 - Reframes landscape clips with a blurred background, cleans and levels the voice to -14 LUFS, ducks optional music
 
-Claude drives it with the `edit-video` skill in `.claude/skills/edit-video/SKILL.md`. In Claude Code just say: *"Edit C:\...\karla-hmo-tip.mp4 into a reel"*.
+In the zero1office AI team this is **Vince** (Reels & Video Editor, Marketing & Content). Nadia's scripts feed his hooks and Cora takes the finished reel for captions and scheduling. Claude drives it as Vince with the `edit-video` skill in `.claude/skills/edit-video/SKILL.md`. In Claude Code just say: *"Edit C:\...\karla-hmo-tip.mp4 into a reel"*.
 
 ## One-time setup (Windows)
 
