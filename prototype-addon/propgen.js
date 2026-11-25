@@ -17,13 +17,13 @@
 
   /* ---------- companies and types (Paolo's list) ---------- */
   var COMPANIES = [
-    ["Maxicare", ["Prepaid", "Individual", "Family", "SME", "Corporate"]],
+    ["Maxicare", ["Prepaid", "Individual", "Family", "SME", "Corporate", "MPlus vs Corporate"]],
     ["Medicard", ["Prepaid", "Individual", "Family", "SME", "Corporate"]],
     ["Intellicare", ["SME", "Corporate"]],
     ["IMS", ["Group Plan", "Corporate", "Teacher", "Government", "Personnel"]],
     ["KHL", ["Individual", "Corporate"]],
   ];
-  var GROUP_TYPES = ["SME", "Corporate", "Group Plan", "Teacher", "Government", "Personnel"];
+  var GROUP_TYPES = ["SME", "Corporate", "MPlus vs Corporate", "Group Plan", "Teacher", "Government", "Personnel"];
 
   /* ---------- MyMaxicare 2026 rates, checked against the primer and the summary proposals ---------- */
   var PLANS = [
@@ -172,7 +172,7 @@
   var HIST_KEY = "zero1office-proposals:v1"; // company, type, date and status only: no client or member data is kept
   var G = { co: "", type: "", f: {}, members: [], specs: ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY"], out: null, err: "", warn: [], sending: false, draft: null, review: null, tab: "email", mailErr: "" };
   function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.draft = null; G.review = null; G.tab = "email"; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
-  function formKind() { if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
+  function formKind() { if (G.co === "Maxicare" && G.type === "SME") return "mxs"; if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
 
   /* ---------- view ---------- */
   function vPropgen() {
@@ -228,6 +228,10 @@
       h += '<div class="z1-three">' + inp("name", "Client's name *", "text", ' maxlength="120" autocomplete="off"') + inp("age", "Age *", "number", ' min="0" max="60" step="1" inputmode="numeric"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + '</div>' + locFields();
     } else if (k === "mxf") {
       h += '<div class="z1-three">' + inp("name", "Principal's name *", "text", ' maxlength="120" autocomplete="off"') + inp("age", "Principal's age *", "number", ' min="0" max="60" step="1" inputmode="numeric"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + '</div>' + members() + locFields();
+    } else if (k === "mxs") {
+      h += '<fieldset class="fld" style="border:0;padding:0;margin:0"><legend style="padding:0">Plan option *</legend><div class="chips" role="group" aria-label="Plan option">' + SME_OPTS.map(function (o) {
+        return '<button type="button" class="chip" data-pg="smeopt" data-v="' + e(o.id) + '" aria-pressed="' + (G.f.opt === o.id) + '">' + e(o.n) + "</button>"; }).join("") + "</div></fieldset>" +
+        '<div class="z1-three">' + inp("name", "Client name *", "text", ' maxlength="120" autocomplete="off"') + inp("org", "Company name (optional)", "text", ' maxlength="160" autocomplete="off"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + "</div>";
     } else {
       h += genericFields();
     }
@@ -287,6 +291,11 @@
     if (!EMAIL_RE.test(c.email)) throw new Error("The email address doesn't look right.");
     c.mobile = (f.mobile || "").trim();
     c.loc = readLoc(); c.note = (f.note || "").trim(); c.on = todayIso();
+    if (k === "mxs") { // Paolo, 2026-11-25: Maxicare SME asks only the option, client name, company (optional) and email
+      var opt = SME_OPTS.filter(function (o) { return o.id === f.opt; })[0]; if (!opt) throw new Error("Pick the plan option: Starter, MPlus Group, MPlus Small, MPlus or MPlus Rated.");
+      c.opt = opt; c.org = (f.org || "").trim(); c.grp = true;
+      finish(k, c); return Promise.resolve();
+    }
     if (k === "mxi" || k === "mxf") {
       c.plans = PLANS; c.modes = [0, 1, 2]; c.riders = RIDERS;
       var pa = ageYears(f.age, k === "mxi" ? "the client's" : "the principal's");
@@ -318,11 +327,11 @@
     finish(k, c); return Promise.resolve();
   }
   function finish(k, c) {
-    var out = k === "generic" ? genericEmail(c) : maxicareEmail(k, c);
+    var out = k === "generic" ? genericEmail(c) : k === "mxs" ? { subject: "Maxicare SME Plan Proposal" + (c.org ? " for " + c.org : ""), proposal: "" } : maxicareEmail(k, c);
     out.to = c.email; out.kind = k; out.co = G.co; out.type = G.type; out.c = c;
-    out.files = filesFor(G.co, G.type);
+    out.files = k === "mxs" ? smeFiles(c.opt) : filesFor(G.co, G.type);
     // Paolo, 2026-11-25: the proposal is saved as a PDF named "Client Name_Client Age_MyMaxicare" and attached second.
-    if (k !== "generic") out.files.splice(Math.min(1, out.files.length), 0, { gen: "pdf", name: pdfName(c), label: "Your MyMaxicare proposal (PDF)" });
+    if (k === "mxi" || k === "mxf") out.files.splice(Math.min(1, out.files.length), 0, { gen: "pdf", name: pdfName(c), label: "Your MyMaxicare proposal (PDF)" });
     out.email = emailTemplate(k, c, out.files);
     out.html = k === "generic" ? out.email + "<hr>" + out.proposal : out.email;
     G.out = out; G.draft = null; G.mailErr = "";
@@ -533,6 +542,23 @@
     ["files/maxicare-pccs-and-other-services.pdf", "Maxicare_PCCs_and_Other_Services.pdf", "Maxicare Primary Care Clinics and other services"],
   ];
   var FILES = { "Maxicare|Individual": MX_FILES, "Maxicare|Family": MX_FILES };
+  // Maxicare SME (Paolo, 2026-11-25): pubmat, PCCs guide, then the option's proposal and setup template. Files with no path aren't uploaded yet.
+  var SME_OPTS = [
+    { id: "starter", n: "Starter", prop: "Maxicare_SME_Starter Plan_Standard Proposal", tpl: "Maxicare_SME_Starter Plan_Template" },
+    { id: "group", n: "MPlus Group", prop: "Maxicare_SME_MPlus-10-19Group Plan_Standard Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
+    { id: "small", n: "MPlus Small", prop: "Maxicare_SME_MPlus-20-99Small Plan_Standard Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
+    { id: "mplus", n: "MPlus", prop: "Maxicare_SME_MPlus Plan_Standard Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
+    { id: "rated", n: "MPlus Rated", prop: "Maxicare_SME_MPlus Plan_Rated Proposal", tpl: "Maxicare_SME_MPlus Plan_Template" },
+  ];
+  var SME_PATHS = {}; // file name -> published path, filled in as Paolo uploads them
+  function smeFiles(opt) {
+    return [
+      { path: MX_FILES[0][0], name: "Karla Luansing_Maxicare_HMO Pubmat.jpg", label: "Karla Luansing_Maxicare_HMO Pubmat" },
+      { path: MX_FILES[2][0], name: MX_FILES[2][1], label: "Maxicare_PCCs_and_Other_Services" },
+      { path: SME_PATHS[opt.prop] || "", name: opt.prop, label: opt.prop, missing: !SME_PATHS[opt.prop] },
+      { path: SME_PATHS[opt.tpl] || "", name: opt.tpl, label: opt.tpl, missing: !SME_PATHS[opt.tpl] },
+    ];
+  }
   function filesFor(co, type) { return (FILES[co + "|" + type] || []).map(function (f) { return { path: f[0], name: f[1], label: f[2] }; }); }
 
   /* ---------- email template, by product type ---------- */
@@ -574,7 +600,41 @@
     "<p>I'd be happy to discuss our products and programs in greater detail at your most convenient time.<br>When would be a good time to schedule the meeting, this week or next week?</p>" +
     "<p>Should you have any questions or need clarifications, please feel free to contact me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
     "<p>I hope to hear from you soon and look forward to the opportunity to partner with you and your family as your trusted Health Benefits Solutions Partner.</p><p>Thank you.</p>" + KARLA_SIGNATURE;
+  function smeTemplate(name) { return "<p>Dear " + e(name) + ",</p>" + SME_BODY; }
+  // Karla's MaxicarePlus SME email, word for word as Paolo sent it (2026-11-25); "Sir/Madam" becomes the client's name.
+  var SME_BODY = "<p>Good day!</p>" +
+    "<p>For your review and consideration, I am pleased to present MaxicarePlus, an HMO plan designed for Small and Medium Enterprises (SMEs) with an initial headcount of 10–99 employees.</p>" +
+    "<p><b>MaxicarePlus Plan Highlights</b></p><ul>" +
+    "<li><b>Standardized Efficiency:</b> A &quot;boxed-type&quot; offering with competitive, readily available rates and add-ons benefit options.</li>" +
+    "<li><b>Comprehensive Access:</b> Full HMO coverage with options to include or exclude access to major hospitals.</li>" +
+    "<li><b>Maximum Benefit Limit (MBL):</b> Applied per illness, per member, per year.</li>" +
+    "<li><b>Maxicare Clinics (PCCs) Advantage:</b> Enjoy unlimited consultations and laboratory procedures exclusively at Maxicare Clinics (formerly Primary Care Clincs), with no deduction from the member's MBL.</li></ul>" +
+    "<p><b>Core Benefits:</b></p><ul>" +
+    "<li><b>Inpatient Care:</b> Access to all accredited hospitals and clinics nationwide, with an option to include or exclude major hospitals (subject to MBL).</li>" +
+    "<li><b>Outpatient Care:</b><ul><li>Unlimited consultations and lab procedures at all Maxicare PCCs (no MBL deduction).</li><li>Access to accredited hospitals and clinics nationwide (subject to MBL).</li></ul></li>" +
+    "<li><b>Healthway Access:</b> Complementary access to Healthway facilities.</li>" +
+    "<li><b>Emergency Care:</b><ul><li>Non-Accredited Hospitals (PH): Reimbursable up to 80% of hospital bills/fees (based on Maxicare rates) for the first 24 hours of treatment, up to ₱30,000 per availment per member per year.</li><li>Areas without Affiliated Hospitals (PH): Reimbursable based on standard rates, subject to MBL.</li><li>International Coverage: Reimbursable up to 100% of actual cost, up to ₱30,000 per availment per member per year.</li></ul></li>" +
+    "<li><b>Ambulance Service:</b> Covered for hospital-to-hospital transfers (up to MBL). A ₱2,500 limit applies for transfers from non-affiliated to affiliated hospitals (on a reimbursement basis).</li></ul>" +
+    "<p><b>Optional Enhancements:</b></p><ul>" +
+    "<li><b>Standard Dental Package:</b> Access to accredited dental clinics and Maxicare Dental Hubs.</li>" +
+    "<li><b>Annual Check-Up (ACU):</b> Scheduled APE/ACU packages at selected Maxicare providers.</li>" +
+    "<li><b>Daily Hospital Income:</b> A ₱500 daily cash benefit during hospitalization due to accident or illness.</li>" +
+    "<li><b>Group Life Insurance:</b> Provides a death/dismemberment benefit of up to ₱100,000.</li>" +
+    "<li><b>Critical Illness Benefit:</b> A ₱50,000 lump-sum benefit upon diagnosis of a covered critical illness.</li></ul>" +
+    "<p><b>Next Steps &amp; Requirements</b></p><ul>" +
+    "<li>Attached is the Employee Benefit Setup template. This will be helpful if you have not yet provided details of your current HMO coverage, as it will allow us to provide a more accurate quotation.</li>" +
+    "<li>Please fill this out with your chosen benefit preferences and send your BIR Form 2303 so we can verify your registered business type.</li></ul>" +
+    "<p><b>💡Make the Most of Maxicare Clinics (PCCs)</b><br>Your employees can enjoy unlimited consultations and laboratory procedures at Maxicare PCCs without deductions from their MBL, helping preserve their benefit limits for other covered medical needs.</p>" +
+    "<p><b>QUICK LINKS &amp; RESOURCES</b></p><ul>" +
+    "<li>Maxicare Website: <a href=\"https://www.maxicare.com.ph/#care-center\">List of Accredited Provider Hospitals/Clinics and Doctors</a></li>" +
+    "<li>Working Files: List of Accredited Provider Hospitals/Clinics and Doctors</li>" +
+    "<li>Maxicare Clinics (PCCs): <a href=\"https://www.maxicare.com.ph/services/visit-locations\">(Contact details, Address, and Operating Hours)</a></li>" +
+    "<li>Working File: List of ACU/PEME Providers</li></ul>" +
+    "<p><b>9 Major Hospitals of Maxicare</b></p><ul>" + ["Asian Hospital and Medical Center", "Cardinal Santos Medical Center", "Cebu Doctors University Hospital", "Chong Hua Hospital", "Davao Doctors Hospital", "Makati Medical Center", "St. Luke's Medical Center - Global City", "St. Luke's Medical Center - Quezon City", "The Medical City"].map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>" +
+    "<p>Should you have any questions or need clarifications, please feel free to reach out to me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
+    "<p>Thank you, and I look forward to partnering with your organization.</p>" + KARLA_SIGNATURE;
   function emailTemplate(k, c, files) {
+    if (k === "mxs") return smeTemplate(c.name);
     if (k === "mxi" || k === "mxf") return mxTemplate(c.name);
     var h = letterTop(c, c.name);
     h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
@@ -599,6 +659,7 @@
   function runChecks(o) {
     var out = [], c = o.c;
     function add(s, t) { out.push({ s: s, t: t }); }
+    if (o.kind === "mxs") return smeChecks(o, add, out);
     if (o.kind !== "generic") {
       var bad = [];
       o.calc.forEach(function (m) {
@@ -656,6 +717,17 @@
     return out;
   }
 
+  function smeChecks(o, add, out) {
+    var c = o.c, tOk = o.email === smeTemplate(c.name);
+    add(c.opt ? "ok" : "fail", c.opt ? "Plan option: " + c.opt.n + (c.org ? ", for " + c.org : "") + "." : "No plan option picked.");
+    if (o.edited) add(o.email.indexOf(e(c.name)) > -1 ? "ok" : "warn", o.email.indexOf(e(c.name)) > -1 ? "Email was edited from Karla's MaxicarePlus SME template before approval and still greets " + c.name + " by name." : "Email was edited and no longer has " + c.name + "'s name in it.");
+    else add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's MaxicarePlus SME template word for word and greets " + c.name + " by name instead of Sir/Madam." : "Email doesn't match Karla's MaxicarePlus SME template.");
+    add(/Please consider the environment/.test(o.email) ? "ok" : "warn", /Please consider the environment/.test(o.email) ? "Has Karla's signature, the spot for her signature image, and the disclaimer." : "The line where Karla's signature image goes is missing.");
+    add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
+    var miss = o.files.filter(function (f) { return f.missing; });
+    add(miss.length ? "warn" : "ok", o.files.length + " files to attach for " + c.opt.n + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." + (miss.length ? " Not uploaded here yet, so attach from your own files in Outlook: " + miss.map(function (f) { return f.label; }).join(", ") + "." : ""));
+    return out;
+  }
   // Karla's signature image (Paolo, 2026-11-24) goes just above the environment line (moved there 2026-11-25). Outlook drafts made by the connector can't hold
   // images, so the page shows where it goes and the user inserts it from their Outlook signature; the draft text stays image-free.
   var SIG_IMG = "files/karla-luansing-email-signature.jpg";
@@ -700,7 +772,7 @@
     // files
     if (rv.status === "approved") {
       h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
-        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r"><button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button></td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
+        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r">' + (f.missing ? '<span class="muted small">Not uploaded yet: attach it from your files</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
     if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
@@ -709,12 +781,13 @@
       (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
-    h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
+    if (o.kind === "mxs") G.tab = "email";
+    else h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
     h += '<div class="z1-kv"><div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total[0].map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
     var canEdit = !dr && (!ap || ap.state === "waiting" || ap.state === "changes");
     if (G.tab !== "proposal" && G.mailEdit && canEdit) return h + mailEditor(o) + '</div>';
     if (G.tab !== "proposal" && canEdit) h += '<div class="actions" style="margin:0"><button class="btn sm" data-pg="mailedit">Edit the email</button><span class="muted small">' + (o.edited ? "Edited by you from Karla's template." : "Starts from Karla's template. You can change it until it's approved.") + "</span></div>";
-    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
+    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : o.kind === "mxs" ? '<p class="muted small"><i>The ' + e(o.c.opt.n) + ' proposal and the setup template go as attachments 3 and 4.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
     return h;
   }
   var MAIL_SERVER = "Microsoft 365";
@@ -922,6 +995,7 @@
     else if (a === "save") { saveFile(Number(v)); return; }
     else if (a === "savesig") { saveFile(-1); return; }
     else if (a === "pgtab") { G.tab = v; }
+    else if (a === "smeopt") { G.f.opt = v; G.err = ""; }
     else if (a === "mailedit") { G.mailEdit = true; G.tplDraft = null; G.tab = "email"; }
     else if (a === "mailcancel") { G.mailEdit = false; G.tplDraft = null; }
     else if (a === "mailsave") { if (saveMailEdit() === false) return; }
@@ -982,9 +1056,9 @@
   function approvalBox(ap) {
     if (!ap) return "";
     var st = ap.state, h = '<div class="z1-box" role="status"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Your approval</b><span class="sp" style="flex:1"></span>' + apState(st) + '</div>';
-    if (st === "waiting") h += '<span class="small">Check the PDF, then approve it here or in Approvals. Once it\'s approved you can create the Outlook draft.</span>' + (S.askFor === ap.id
+    if (st === "waiting") h += '<span class="small">Check the ' + (G.out && G.out.blocks ? "PDF" : "email and files") + ', then approve it here or in Approvals. Once it\'s approved you can create the Outlook draft.</span>' + (S.askFor === ap.id
       ? '<form data-form="ask" data-id="' + ap.id + '" class="stack" style="gap:6px"><label class="lbl" for="askText">What should ' + e(nameOf(ap.who)) + ' change?</label><textarea class="inp" id="askText" rows="3" placeholder="e.g. Add the dental rider and use the Gold plan"></textarea><div class="actions"><button class="btn pri sm" type="submit">Send back</button><button class="btn sm" type="button" data-act="askcancel">Cancel</button></div></form>'
-      : '<div class="actions"><button class="btn sm pri" data-act="approve" data-id="' + ap.id + '">Approve</button><button class="btn sm" data-act="ask" data-id="' + ap.id + '">Ask for changes</button><button class="btn sm" data-act="decline" data-id="' + ap.id + '">Decline</button><button class="btn sm" type="button" data-pgprev>Preview the PDF</button></div>');
+      : '<div class="actions"><button class="btn sm pri" data-act="approve" data-id="' + ap.id + '">Approve</button><button class="btn sm" data-act="ask" data-id="' + ap.id + '">Ask for changes</button><button class="btn sm" data-act="decline" data-id="' + ap.id + '">Decline</button>' + (G.out && G.out.blocks ? '<button class="btn sm" type="button" data-pgprev>Preview the PDF</button>' : '') + '</div>');
     else if (st === "changes") h += '<span class="small">You asked for changes' + (ap.note ? ': “' + e(ap.note) + '”' : '') + '. Edit the details and generate it again.</span>';
     else if (st === "declined") h += '<span class="small">You declined this proposal, so no email will be made. Edit the details to start over.</span>';
     else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook draft.</span>';
