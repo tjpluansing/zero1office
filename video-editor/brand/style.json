@@ -1,0 +1,27 @@
+{
+  "_help": "Brand look for every video. Colors are #RRGGBB. Put a logo PNG in this folder and set logo to its file name. Put .ttf fonts in brand/fonts and set font to the font's name.",
+  "font": "Arial",
+  "colors": {
+    "caption_text": "#FFFFFF",
+    "caption_highlight": "#D3A13B",
+    "caption_outline": "#002C6C",
+    "hook_text": "#FFFFFF",
+    "hook_box": "#002C6C",
+    "cta_bg": "#002C6C",
+    "cta_title": "#FFFFFF",
+    "cta_sub": "#E4C075"
+  },
+  "captions": {
+    "size_pct": 4.4,
+    "bottom_pct": 24,
+    "max_words": 3,
+    "max_chars": 22,
+    "uppercase": true,
+    "pop": true
+  },
+  "hook": { "size_pct": 3.6 },
+  "cta": { "seconds": 2.5 },
+  "logo": null,
+  "logo_width_pct": 18,
+  "output": { "width": 1080, "height": 1920, "fps": 30, "crf": 20, "preset": "medium" }
+}
