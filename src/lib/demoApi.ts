@@ -52,7 +52,7 @@ const catalog: Catalog = {
   roles: [
     { id: "super_admin", name: "Super Admin", description: "Everything, including users and settings. Cannot be locked out.", is_super: true, sort: 10 },
     { id: "agent", name: "Agent", description: "Licensed agent: all client, quoting, billing and report work, including approvals.", is_super: false, sort: 20 },
-    { id: "assistant", name: "Assistant", description: "Day-to-day encoding: view and update clients and quotes, no approvals, deletes or exports.", is_super: false, sort: 30 },
+    { id: "assistant", name: "Assistant", description: "Follows up pending items: add and update clients, draft quotes, see billing status. No approvals, deletes, exports, reports or admin.", is_super: false, sort: 30 },
     { id: "no_access", name: "No access", description: "Signed in but waiting for an admin to grant access.", is_super: false, sort: 99 },
   ],
   rolePermissions: {
@@ -61,7 +61,7 @@ const catalog: Catalog = {
       .filter((p) => ["dashboard", "clients", "quotes", "billing", "reports"].includes(p.page) || p.key === "audit_log.view")
       .map((p) => p.key),
     assistant: ["dashboard.view", "clients.view", "clients.create", "clients.edit", "quotes.view", "quotes.create",
-      "quotes.edit", "billing.view", "reports.view"],
+      "quotes.edit", "billing.view"],
     no_access: [],
   },
 };
@@ -140,7 +140,7 @@ function seed(): DemoState {
         overrides: [{ permission_key: "admin_users.view", effect: "grant" }],
       }),
       u("u-assistant", "assistant@ask-karla.com", "New Assistant", "assistant", "active", null, {
-        overrides: [{ permission_key: "reports.view", effect: "deny" }, { permission_key: "clients.export", effect: "grant" }],
+        overrides: [{ permission_key: "clients.export", effect: "grant" }],
       }),
       u("u-ojt", "ojt@ask-karla.com", "OJT Trainee", "assistant", "suspended", 300),
       u("u-ms", "marketing@ask-karla.com", "", "no_access", "pending", null),

@@ -111,11 +111,12 @@ select pg_temp.check((select full_name = 'Assistant One' from profiles where id 
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
 insert into user_permission_overrides values
   ('00000000-0000-0000-0000-00000000000c', 'clients.view', 'deny'),
-  ('00000000-0000-0000-0000-00000000000c', 'reports.export', 'grant');
+  ('00000000-0000-0000-0000-00000000000c', 'quotes.export', 'grant');
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.check((select count(*) = 0 from clients), 'denying the page hides all rows');
 select pg_temp.check(not has_permission('clients.create'), 'denying a page also drops its actions');
-select pg_temp.check(has_permission('reports.export'), 'per-user grant works');
+select pg_temp.check(has_permission('quotes.export'), 'per-user grant works');
+select pg_temp.check(not has_permission('reports.view'), 'assistant preset has no reports');
 
 -- ---------- Delegated admin (Karla) cannot escalate ----------
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
