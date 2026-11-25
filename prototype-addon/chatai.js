@@ -118,6 +118,7 @@
       if (e) {
         var r = clean(v && v.reply); if (!r) throw { code: "empty" };
         arr.push({ f: "e", x: r, t: nowLabel(), zai: 1 });
+        if (window.Z1AIUse) window.Z1AIUse.add(e.id, 1);
         var t = v && typeof v.task === "string" ? clean(v.task, 140) : "";
         if (t) giveTask(e, t);
       } else {
@@ -125,6 +126,7 @@
         var reps = (v && Array.isArray(v.replies) ? v.replies : []).filter(function (x) { return x && ids[x.id] && clean(x.reply); }).slice(0, 3);
         if (!reps.length) throw { code: "empty" };
         reps.forEach(function (x) { arr.push({ f: "e", w: x.id, x: clean(x.reply), t: nowLabel(), zai: 1 }); });
+        if (window.Z1AIUse) reps.forEach(function (x) { window.Z1AIUse.add(x.id, 1); });
         var tk = v && v.task && ids[v.task.id] && clean(v.task.text, 140);
         if (tk) giveTask(ids[v.task.id], tk);
       }

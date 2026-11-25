@@ -579,6 +579,12 @@
   window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Prepaid Health Cards_2026_Proposal", "OPTION 1_Maxicare_SME_MPlus Plan_Standard Proposal", "OPTION 1_Maxicare_SME_MPlus Plan_Template", "OPTION 2_Maxicare_CORP_Primer", "OPTION 2_Maxicare_Corporate Set Up_Template", "OPTION 2_Maxicare_Corporate_Standard Plan", "OPTION 2_Maxicare_Prospective Corporate Account Form (PCAF)", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
     .concat(SME_OPTS.map(function (o) { return o.prop; }))
     .concat(SME_OPTS.map(function (o) { return o.tpl; }).filter(function (t, i, a) { return a.indexOf(t) === i; }));
+  // For App health (v80): every product's files that still have nothing uploaded, by product.
+  window.Z1PG_missing = function () {
+    var out = [], add = function (prod, list) { list.forEach(function (f) { if (f.missing && !out.some(function (x) { return x.label === f.label; })) out.push({ prod: prod, label: f.label }); }); };
+    try { add("Maxicare Prepaid", prepaidFiles()); add("MPlus vs Corporate", mvcFiles()); add("Maxicare Corporate", corpFiles()); SME_OPTS.forEach(function (o) { add("Maxicare SME " + (o.n || o.prop), smeFiles(o)); }); } catch (err) { /* optional */ }
+    return out;
+  };
   // Maxicare Prepaid (Paolo, 2026-11-25)
   function prepaidFiles() {
     return fromRepo([
