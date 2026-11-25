@@ -119,22 +119,34 @@
   // Facilities in the client's city first; when the city has fewer than 3, add the rest of the province, then the region.
   // Location is optional (Paolo, 2026-11-24). With a city, list facilities there first; with only a province or a region, list from there.
   // When the chosen place has fewer than 3, add the rest of the province, then the region.
+  // Approximate city centres for Metro Manila, so fill-ins from other cities come nearest first (Paolo, 2026-11-25: "nearest").
+  var NCR_XY = { "MANILA CITY": [14.5995, 120.9842], "QUEZON CITY": [14.676, 121.0437], "MAKATI CITY": [14.5547, 121.0244], "PASAY CITY": [14.5378, 121.0014], "TAGUIG CITY": [14.5176, 121.0509],
+    "PASIG CITY": [14.5764, 121.0851], "MANDALUYONG CITY": [14.5794, 121.0359], "SAN JUAN": [14.6019, 121.0355], "MARIKINA CITY": [14.6507, 121.1029], "KALOOKAN CITY": [14.6488, 120.983],
+    "MALABON CITY": [14.6625, 120.9567], "NAVOTAS": [14.6667, 120.9417], "VALENZUELA CITY": [14.7011, 120.983], "PARAÑAQUE CITY": [14.4793, 121.0198], "LAS PIÑAS CITY": [14.4445, 120.9939],
+    "MUNTINLUPA CITY": [14.4081, 121.0415], "PATEROS": [14.5446, 121.0687] };
+  function cityGap(a, b) { var p = NCR_XY[a], q = NCR_XY[b]; if (!p || !q) return 99; var dx = (p[0] - q[0]), dy = (p[1] - q[1]); return dx * dx + dy * dy; }
+  function byNearCity(city) { return function (x, y) { return cityGap(city, x.f[4]) - cityGap(city, y.f[4]) || x.i - y.i; }; }
+  var MIN = { H: 5, P: 3, C: 5, D: 5 };
   function nearby(loc) {
     if (!loc || !loc.region) return null;
     var out = {};
     ["H", "P", "C", "D"].forEach(function (k) {
-      var all = PD.f.map(function (f, i) { return { i: i, f: f }; }).filter(function (x) { return x.f[1] === k && PD.regions[x.f[2]] === loc.region; });
+      var all = PD.f.map(function (f, i) { return { i: i, f: f }; }).filter(function (x) { return x.f[1] === k && PD.regions[x.f[2]] === loc.region && !/temporarily closed|permanently closed/i.test(x.f[0]); });
       var here = all.filter(function (x) { return (!loc.prov || x.f[3] === loc.prov) && (!loc.city || x.f[4] === loc.city); });
-      var prov = loc.city ? all.filter(function (x) { return x.f[3] === loc.prov && x.f[4] !== loc.city; }) : [];
+      var prov = loc.city ? all.filter(function (x) { return x.f[3] === loc.prov && x.f[4] !== loc.city; }).sort(byNearCity(loc.city)) : [];
       var reg = loc.prov ? all.filter(function (x) { return x.f[3] !== loc.prov; }) : [];
       var pick = here.slice(0, LIMIT[k]).map(function (x) { x.where = loc.city ? "" : title(x.f[4] || x.f[3]); return x; });
       [prov, reg].forEach(function (g) {
-        if (pick.length >= 3) return;
-        g.slice(0, Math.max(0, Math.min(LIMIT[k], 6) - pick.length)).forEach(function (x) { x.where = title(x.f[4] || x.f[3]); pick.push(x); });
+        if (pick.length >= MIN[k]) return;
+        g.slice(0, MIN[k] - pick.length).forEach(function (x) { x.where = title(x.f[4] || x.f[3]); pick.push(x); });
       });
       out[k] = { list: pick, inCity: here.length };
     });
     return out;
+  }
+  function nearFac(n) { // the client's own city first, then the nearest fill-ins
+    var L = n.P.list.concat(n.H.list).concat(n.C.list);
+    return L.filter(function (x) { return !x.where; }).concat(L.filter(function (x) { return x.where; })).map(function (x) { return x.i; });
   }
   function placeName(loc) {
     if (!loc || !loc.region) return "";
@@ -145,13 +157,15 @@
   function doctorsAt(facIdx, specs, perSpec) {
     if (!DD) return [];
     var set = {}; facIdx.forEach(function (i) { set[i] = 1; });
+    var rank = {}; facIdx.forEach(function (i, r) { if (!(i in rank)) rank[i] = r; });
     var want = {}; specs.forEach(function (s) { var j = DD.specs.indexOf(s); if (j > -1) want[j] = []; });
     DD.d.forEach(function (d) {
-      if (!(d[1] in want) || want[d[1]].length >= perSpec) return;
-      var at = d[3].filter(function (i) { return set[i]; });
-      if (at.length) want[d[1]].push({ n: d[0], sub: d[2], at: at.map(function (i) { return PD.f[i][0]; }) });
+      if (!(d[1] in want)) return;
+      var at = d[3].filter(function (i) { return set[i]; }).sort(function (a, b) { return rank[a] - rank[b]; });
+      if (at.length) want[d[1]].push({ n: d[0], sub: d[2], r: rank[at[0]], at: at.map(function (i) { return PD.f[i][0]; }) });
     });
-    return Object.keys(want).map(function (j) { return { spec: DD.specs[j], docs: want[j] }; });
+    // physicians at the client's nearest hospitals and clinics first
+    return Object.keys(want).map(function (j) { return { spec: DD.specs[j], docs: want[j].sort(function (a, b) { return a.r - b.r; }).slice(0, perSpec) }; });
   }
 
   /* ---------- state ---------- */
@@ -197,7 +211,7 @@
       sel("region", "Region (optional)", [["", "Choose the region"]].concat(regs.map(function (r) { return [r, REGION_NAME[r] || r]; })), ' data-pgr="1"') +
       sel("prov", "Province (optional)", [["", provs.length ? "Choose the province" : "Choose the region first"]].concat(provs.map(function (p) { return [p, title(p)]; })), ' data-pgr="1"' + (provs.length ? "" : " disabled")) +
       sel("city", "City or municipality (optional)", [["", cities.length ? "Choose the city" : "Choose the province first"]].concat(cities.map(function (c) { return [c, title(c)]; })), cities.length ? "" : " disabled") +
-      '</div><p class="muted small" style="margin:0">Optional. Where the client lives or works; if given, the proposal lists accredited hospitals, clinics and doctors there. Only places with a Maxicare-accredited provider are listed.</p>';
+      '</div><p class="muted small" style="margin:0">Where the client lives or works. Maya lists the nearest Primary Care Clinics, hospitals, clinics, physicians and dental clinics, and sends a MyMaxicare proposal back if this is missing. Only places with a Maxicare-accredited provider are listed.</p>';
   }
   function specPicker() {
     var specs = ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY", "FAMILY MEDICINE", "GENERAL MEDICINE", "GENERAL SURGERY", "E.E.N.T.", "OPHTHALMOLOGY", "OTOLARYNGOLOGY-HEAD AND NECK SURGERY", "DERMATOLOGY", "PSYCHIATRY", "ORTHOPEDIC SURGERY", "UROLOGY", "PHYSICAL MEDICINE AND REHABILITATION", "NEUROSURGERY", "EMERGENCY MEDICINE"];
@@ -339,10 +353,10 @@
       if (n[k].inCity > L.length) h += "<p>…and " + (n[k].inCity - L.length) + " more in " + e(c.loc.city ? title(c.loc.city) : placeName(c.loc)) + ".</p>";
     });
     if (DD && c.specs.length) {
-      var fac = n.H.list.concat(n.P.list).concat(n.C.list).map(function (x) { return x.i; });
+      var fac = nearFac(n);
       var docs = doctorsAt(fac, c.specs, 6).filter(function (g) { return g.docs.length; });
       if (docs.length) {
-        h += "<h3>Accredited doctors at these hospitals and clinics</h3>";
+        h += "<h3>Accredited physicians near you</h3><p>At the Primary Care Clinics, hospitals and clinics listed above, nearest first.</p>";
         docs.forEach(function (g) {
           h += "<p><b>" + e(title(g.spec)) + "</b></p><ul>" + g.docs.map(function (d) { return "<li>Dr. " + e(title(d.n)) + (d.sub ? " (" + e(title(d.sub)) + ")" : "") + " · " + e(d.at.map(function (a) { return /^Maxicare PCC/.test(a) ? a : title(a); }).join(", ")) + "</li>"; }).join("") + "</ul>";
         });
@@ -484,10 +498,10 @@
         n[k].inCity > L.length ? "…and " + (n[k].inCity - L.length) + " more in " + e(c.loc.city ? title(c.loc.city) : placeName(c.loc)) + "." : "");
     });
     if (DD && c.specs.length) {
-      var fac = n.H.list.concat(n.P.list).concat(n.C.list).map(function (x) { return x.i; });
+      var fac = nearFac(n);
       var docs = doctorsAt(fac, c.specs, 6).filter(function (g) { return g.docs.length; });
       if (docs.length) {
-        out.push("<h3>Accredited doctors at these hospitals and clinics</h3>");
+        out.push("<h3>Accredited physicians near you</h3><p>At the Primary Care Clinics, hospitals and clinics listed above, nearest first.</p>");
         docs.forEach(function (g) { list(e(title(g.spec)), g.docs.map(function (d) { return "Dr. " + e(title(d.n)) + (d.sub ? " (" + e(title(d.sub)) + ")" : "") + " · " + e(d.at.map(function (a) { return /^Maxicare PCC/.test(a) ? a : title(a); }).join(", ")); })); });
         out.push("<p>Doctors' schedules change; please confirm with the clinic before your visit.</p>");
       }
@@ -592,9 +606,22 @@
     }
     add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
     if (c.near) {
-      var hosp = c.near.H.list.length, inCity = c.near.H.inCity, pl = placeName(c.loc);
-      add(hosp ? (inCity ? "ok" : "warn") : "fail", hosp ? (inCity ? inCity + " accredited hospitals in " + pl + "; nearest listed." : "No accredited hospital in " + pl + "; the nearest ones in the province or region are listed.") : "No accredited hospital found near the client.");
-    } else if (o.co === "Maxicare") add("warn", "No location given, so no hospitals, clinics or doctors are listed.");
+      // Paolo, 2026-11-25: every proposal lists the nearest PCCs, hospitals, clinics, physicians and dental clinics. Recheck from the data.
+      var pl = placeName(c.loc), html = o.proposal || "", miss = [], far = [], got = [];
+      ["P", "H", "C", "D"].forEach(function (k) {
+        var L = c.near[k].list, nm = KIND[k].replace("Maxicare ", "");
+        if (!L.length) { miss.push(nm); return; }
+        var shown = L.filter(function (x) { return html.indexOf(e(x.f[1] === "P" ? x.f[0] : title(x.f[0]))) > -1; }).length;
+        if (shown < L.length) miss.push(nm + " (" + (L.length - shown) + " not in the proposal)");
+        if (c.loc.city && c.near[k].inCity && L[0].where) far.push(nm);
+        got.push(L.length + " " + nm.toLowerCase() + (c.near[k].inCity ? " (" + Math.min(c.near[k].inCity, L.length) + " in " + (c.loc.city ? title(c.loc.city) : pl) + ")" : ""));
+      });
+      var docs = DD && c.specs.length ? doctorsAt(nearFac(c.near), c.specs, 6).reduce(function (t, g) { return t + g.docs.length; }, 0) : 0;
+      if (!docs) miss.push("physicians");
+      else got.push(docs + " physicians");
+      add(miss.length || far.length ? "fail" : "ok", miss.length ? "Missing from the provider list near " + pl + ": " + miss.join(", ") + "." : far.length ? "Not nearest first: " + far.join(", ") + "." :
+        "Nearest providers to " + pl + " listed, client's city first: " + got.join(", ") + ".");
+    } else if (o.co === "Maxicare") add(o.kind !== "generic" ? "fail" : "warn", "No location given, so I can't list the nearest Primary Care Clinics, hospitals, clinics, physicians and dental clinics. Add the client's region and city.");
     if (o.kind !== "generic") {
       var tOk = o.email === mxTemplate(c.name);
       add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's Individual and Family template word for word, greets " + c.name + " by name, and has her signature and disclaimer." : "Email doesn't match Karla's Individual and Family template.");

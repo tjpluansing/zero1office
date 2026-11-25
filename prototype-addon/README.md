@@ -23,3 +23,5 @@ Also publish `data/providers.json` and `data/doctors.json` at the page root. Cap
 
 PDF preview (v57): "Preview the PDF" on the generator's approval box and on the proposal's card in Approvals opens the same A4 pages the PDF is made from (paginate()), scaled to the screen, before anyone approves. Close with the button, Escape or a click outside.
 Generator approval box (v58): Approve, Ask for changes (inline note form) and Decline act on the proposal right there, next to Preview the PDF; they reuse the Approvals handlers.
+
+Nearest providers (v59): nearby() drops closed facilities, fills each list to at least 3 PCCs, 5 hospitals, 5 clinics and 5 dental clinics from the nearest cities (Metro Manila uses approximate city centres in NCR_XY; elsewhere the province, then the region), and lists physicians at those facilities nearest first. Maya's check recounts every category against the proposal and sends a MyMaxicare proposal back when the location is missing or a category is absent.
