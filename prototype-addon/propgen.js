@@ -172,7 +172,7 @@
   var HIST_KEY = "zero1office-proposals:v1"; // company, type, date and status only: no client or member data is kept
   var G = { co: "", type: "", f: {}, members: [], specs: ["INTERNAL MEDICINE", "PEDIATRICS", "OBSTETRICS & GYNECOLOGY"], out: null, err: "", warn: [], sending: false, draft: null, review: null, tab: "email", mailErr: "" };
   function reset(keepPick) { var co = G.co, ty = G.type; G.f = {}; G.members = []; G.out = null; G.err = ""; G.warn = []; G.sending = false; G.draft = null; G.review = null; G.tab = "email"; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; if (!keepPick) { G.co = ""; G.type = ""; } else { G.co = co; G.type = ty; } }
-  function formKind() { if (G.co === "Maxicare" && G.type === "SME") return "mxs"; if (G.co === "Maxicare" && G.type === "Corporate") return "mxc"; if (G.co === "Maxicare" && G.type === "Prepaid") return "mxp"; if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
+  function formKind() { if (G.co === "Maxicare" && G.type === "SME") return "mxs"; if (G.co === "Maxicare" && G.type === "Corporate") return "mxc"; if (G.co === "Maxicare" && G.type === "Prepaid") return "mxp"; if (G.co === "Maxicare" && G.type === "MPlus vs Corporate") return "mxv"; if (G.co === "Maxicare" && G.type === "Individual") return "mxi"; if (G.co === "Maxicare" && G.type === "Family") return "mxf"; return G.type ? "generic" : ""; }
 
   /* ---------- view ---------- */
   function vPropgen() {
@@ -234,7 +234,7 @@
         '<div class="z1-three">' + inp("name", "Client name *", "text", ' maxlength="120" autocomplete="off"') + inp("org", "Company name (optional)", "text", ' maxlength="160" autocomplete="off"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + "</div>";
     } else if (k === "mxp") { // Paolo, 2026-11-25: Maxicare Prepaid asks only the client name (and the email to send to)
       h += '<div class="z1-three">' + inp("name", "Client name *", "text", ' maxlength="120" autocomplete="off"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + "</div>";
-    } else if (k === "mxc") {
+    } else if (k === "mxc" || k === "mxv") {
       h += '<div class="z1-three">' + inp("name", "Client name *", "text", ' maxlength="120" autocomplete="off"') + inp("org", "Company name *", "text", ' maxlength="160" autocomplete="off"') + inp("email", "Client's email *", "email", ' maxlength="160" autocomplete="off"') + "</div>";
     } else {
       h += genericFields();
@@ -296,7 +296,7 @@
     c.mobile = (f.mobile || "").trim();
     c.loc = readLoc(); c.note = (f.note || "").trim(); c.on = todayIso();
     if (k === "mxp") { finish(k, c); return Promise.resolve(); }
-    if (k === "mxc") { // Paolo, 2026-11-25: Maxicare Corporate asks the client name, company name and email
+    if (k === "mxc" || k === "mxv") { // Paolo, 2026-11-25: Maxicare Corporate (and MPlus vs Corporate) asks the client name, company name and email
       c.org = need(f.org, "Enter the company name."); c.grp = true;
       finish(k, c); return Promise.resolve();
     }
@@ -336,9 +336,9 @@
     finish(k, c); return Promise.resolve();
   }
   function finish(k, c) {
-    var out = k === "generic" ? genericEmail(c) : k === "mxs" ? { subject: "Maxicare SME Plan Proposal" + (c.org ? " for " + c.org : ""), proposal: "" } : k === "mxc" ? { subject: "Maxicare Corporate Plan Proposal for " + c.org, proposal: "" } : k === "mxp" ? { subject: "Maxicare Prepaid Health Cards Proposal", proposal: "" } : maxicareEmail(k, c);
+    var out = k === "generic" ? genericEmail(c) : k === "mxs" ? { subject: "Maxicare SME Plan Proposal" + (c.org ? " for " + c.org : ""), proposal: "" } : k === "mxc" ? { subject: "Maxicare Corporate Plan Proposal for " + c.org, proposal: "" } : k === "mxp" ? { subject: "Maxicare Prepaid Health Cards Proposal", proposal: "" } : k === "mxv" ? { subject: "Maxicare HMO Plan Proposal for " + c.org, proposal: "" } : maxicareEmail(k, c);
     out.to = c.email; out.kind = k; out.co = G.co; out.type = G.type; out.c = c;
-    out.files = k === "mxs" ? smeFiles(c.opt) : k === "mxc" ? corpFiles() : k === "mxp" ? prepaidFiles() : filesFor(G.co, G.type);
+    out.files = k === "mxs" ? smeFiles(c.opt) : k === "mxc" ? corpFiles() : k === "mxp" ? prepaidFiles() : k === "mxv" ? mvcFiles() : filesFor(G.co, G.type);
     // Paolo, 2026-11-25: the proposal is saved as a PDF named "Client Name_Client Age_MyMaxicare" and attached second.
     if (k === "mxi" || k === "mxf") out.files.splice(Math.min(1, out.files.length), 0, { gen: "pdf", name: pdfName(c), label: "Your MyMaxicare proposal (PDF)" });
     out.email = emailTemplate(k, c, out.files);
@@ -568,11 +568,11 @@
   // A file uploaded in Settings > Files and linked to an attachment slot replaces the built-in one (Paolo, 2026-11-25).
   function fromRepo(list) {
     return list.map(function (f) {
-      var r = window.Z1Files && window.Z1Files.forSlot(f.label);
-      return r ? { repo: r, path: "", name: r.name, label: f.label } : f;
+      var r = window.Z1Files && window.Z1Files.forSlot(f.slot || f.label);
+      return r ? { repo: r, path: "", name: (f.prefix || "") + r.name, label: f.label } : f;
     });
   }
-  window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Prepaid Health Cards_2026_Proposal", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
+  window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Prepaid Health Cards_2026_Proposal", "Maxicare_CORP_Primer", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
     .concat(SME_OPTS.map(function (o) { return o.prop; }))
     .concat(SME_OPTS.map(function (o) { return o.tpl; }).filter(function (t, i, a) { return a.indexOf(t) === i; }));
   // Maxicare Prepaid (Paolo, 2026-11-25)
@@ -581,6 +581,17 @@
       { path: MX_FILES[0][0], name: "Karla Luansing_Maxicare_HMO Pubmat.jpg", label: "Karla Luansing_Maxicare_HMO Pubmat" },
       { path: "", name: "Maxicare_Prepaid Health Cards_2026_Proposal", label: "Maxicare_Prepaid Health Cards_2026_Proposal", missing: true },
     ]);
+  }
+  // Maxicare MPlus vs Corporate (Paolo, 2026-11-25), in his order. Option 1 reuses the SME MPlus files, Option 2 the Corporate files.
+  function mvcFiles() {
+    var cf = corpFiles(), mp = SME_OPTS.filter(function (o) { return o.id === "mplus"; })[0];
+    function pre(p, f, label) { var g = {}; for (var k in f) g[k] = f[k]; g.name = p + f.name; g.label = label; return g; }
+    var o1 = fromRepo([{ path: "", name: mp.prop, label: mp.prop, missing: true }, { path: "", name: mp.tpl, label: mp.tpl, missing: true }]);
+    var pr = fromRepo([{ path: "", name: "Maxicare_CORP_Primer", label: "Maxicare_CORP_Primer", missing: true }])[0];
+    return [cf[0], { path: MX_FILES[2][0], name: MX_FILES[2][1], label: "Maxicare_PCCs_and_Other_Services" },
+      pre("OPTION 1_", o1[0], "OPTION 1_Maxicare_SME_MPlus Plan_Standard Proposal"), pre("OPTION 1_", o1[1], "OPTION 1_Maxicare_SME_MPlus Plan_Template"),
+      pre("OPTION 2_", pr, "OPTION 2_Maxicare_CORP_Primer"), pre("OPTION 2_", cf[3], "OPTION 2_Maxicare_Corporate Set Up_Template"),
+      pre("OPTION 2_", cf[1], "OPTION 2_Maxicare_Corporate_Standard Plan"), pre("OPTION 2_", cf[4], "OPTION 2_Maxicare_Prospective Corporate Account Form (PCAF)")];
   }
   function corpFiles() {
     return fromRepo([
@@ -658,6 +669,50 @@
     "<p>If you have any questions or need clarifications, please feel free to reach out to me at 0977 217 6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
     "<p>I would be happy to assist you in identifying the most suitable healthcare protection option based on your needs and budget.</p>" +
     "<p>Thank you, and I look forward to assisting you with your healthcare protection needs.</p>" + KARLA_SIGNATURE;
+  function mvcTemplate(name) { return "<p>Dear " + e(name) + ",</p>" + MVC_BODY; }
+  // Karla's Maxicare MPlus vs Corporate email, word for word as Paolo sent it (2026-11-25); "Sir/Madam" becomes the client's name.
+  var MVC_BODY = "<p>Good day!</p>" +
+    "<p>For your perusal and consideration, I am pleased to present the different HMO plan that Maxicare can offer:</p>" +
+    "<p><b>OPTION 1: MaxicarePlus Plan</b></p><ul>" +
+    "<li><b>Target Group:</b> Designed for Small and Medium Enterprises (SMEs) with an initial headcount of 10-99 employees.</li>" +
+    "<li><b>Standardized Efficiency:</b> A &quot;boxed-type&quot; offering with competitive, readily available rates and customizable benefit options.</li>" +
+    "<li><b>Comprehensive Access:</b> Full HMO coverage with options to include or exclude access to major hospitals.</li>" +
+    "<li><b>MBL Structure:</b> The Maximum Benefit Limit (MBL) is applied per illness, per member, per year.</li>" +
+    "<li><b>PCC Advantage:</b> Enjoy unlimited consultations and laboratory procedures exclusively at Maxicare Primary Care Clinics (PCCs) without any deduction from your MBL.</li></ul>" +
+    "<p><b>Core Benefits Include:</b></p><ul>" +
+    "<li><b>Inpatient Care:</b> Access to all accredited hospitals and clinics nationwide, with an option to include or exclude major hospitals (subject to MBL).</li>" +
+    "<li><b>Outpatient Care:</b><ul><li>Unlimited consultations and lab procedures at all Maxicare PCCs (no MBL deduction).</li><li>Access to accredited hospitals and clinics nationwide (subject to MBL).</li></ul></li>" +
+    "<li><b>Healthway Access:</b> Complementary access to Healthway facilities.</li>" +
+    "<li><b>Emergency Care:</b><ul><li>Non-Accredited Hospitals (PH): Reimbursable up to 80% of hospital bills/fees (based on Maxicare rates) for the first 24 hours of treatment, up to ₱30,000 per availment per member per year.</li><li>Areas without Affiliated Hospitals (PH): Reimbursable based on standard rates, subject to MBL.</li><li>International Coverage: Reimbursable up to 100% of actual cost, up to ₱30,000 per availment per member per year.</li></ul></li>" +
+    "<li><b>Ambulance Service:</b> Covered for hospital-to-hospital transfers (up to MBL). A ₱2,500 limit applies for transfers from non-affiliated to affiliated hospitals (on a reimbursement basis).</li></ul>" +
+    "<p><b>Optional Enhancements:</b></p><ul>" +
+    "<li><b>Standard Dental Package:</b> Access to accredited dental clinics and Maxicare Dental Hubs.</li>" +
+    "<li><b>Annual Check-Up (ACU):</b> Scheduled APE/ACU packages at selected Maxicare providers.</li>" +
+    "<li><b>Daily Hospital Income:</b> A ₱500 daily cash benefit during hospitalization due to accident or illness.</li>" +
+    "<li><b>Group Life Insurance:</b> Provides a death/dismemberment benefit of up to ₱100,000.</li></ul>" +
+    "<p><b>OPTION 2: Maxicare Corporate Plan</b></p><ul>" +
+    "<li><b>Eligibility:</b> Designed for companies with non-standard requirements.</li>" +
+    "<li><b>Customization:</b> The plan can be customized according to your company's specific needs and preferences.</li>" +
+    "<li><b>Benefit Matching:</b> We can replicate your existing HMO plan (if applicable) and incorporate additional benefits as needed.</li>" +
+    "<li><b>Rates &amp; Account Management:</b> Corporate rates are determined/computed by our actuarial department/pricing team.<br>This process requires a Health Benefit Executive (Account Officer) to be assigned to my team and will assist me, your Health Benefit Consultant (Maxicare Agent), in managing your account.</li></ul>" +
+    "<p><b>Information/Files Needed for Quotation</b><br>To provide accurate rates, we require the following:</p>" +
+    "<p>a) <b>Completed Corporate Set Up Form/Employee Data:</b><br>Please see the attached template for guidance. Initially, names may not be required.<br>However, Position/Designation is crucial if coverage is tier-based, and Age is important to verify eligibility within age limits.</p>" +
+    "<p>b) <b>BIR Form 2303 (Certificate of Registration):</b><br>This is needed to determine applicable rates based on your registered business type.</p>" +
+    "<p>c) <b>Signed Prospective Corporate Account Form (PCAF):</b><br>Please see the attached form. This is required to formally register this engagement with our Franchising department and assign an Account Officer.<br>The Account Officer will be part of my team and will assist me in managing your account, including coordinating with our actuarial department/pricing team for rates.<br>The PCAF also serves as my authorization to act as your official Health Benefit Consultant (Maxicare Agent) and point-of-contact between you and Maxicare.</p>" +
+    "<p><b>Maxicare Policy:</b> This procedure aligns with Maxicare’s policy, which ensures a clear and efficient process by coordinating with only one designated agent per company/account, regardless of the sales channel.</p>" +
+    "<p><b>Important Clarification:</b> Please be assured that signing the PCAF is not a binding contract and does not obligate your company to enroll in Maxicare's HMO plan.<br>Its primary purpose is to streamline communication and establish a single point-of-contact between your company and Maxicare during the quotation and negotiation period.<br>Your company retains full discretion to choose your preferred HMO provider.</p>" +
+    "<p><b>Process and Timelines</b></p><ul>" +
+    "<li><b>File Handling:</b> Once you provide the necessary files, I will share them with our internal teams (including the assigned Account Officer and Actuarial Department) for processing.</li>" +
+    "<li><b>Account Officer Assignment:</b> An Account Officer will typically be assigned to my team within 24-48 hours after we submit the signed PCAF. This officer will assist me in managing your account.</li>" +
+    "<li><b>Proposal Turnaround Time:</b> The Account Officer will prepare and send the formal proposal in a minimum of 10 working days, provided there are no employees or dependents over the standard age limit.</li></ul>" +
+    "<p>Attached is the template for the Employee Benefit Setup. This will be helpful if you have not yet provided details of your current HMO coverage, as it will allow us to provide a more accurate quotation.<br>Please fill this out with your chosen benefit preferences and send your BIR Form 2303 so we can verify your registered business type.<br>Additionally, I’ve attached a sample Standard Corporate HMO plan and a list of add-on benefits for your reference.</p>" +
+    "<p>Please note that as a Maxicare member, you can enjoy free and unlimited consultations and laboratory procedures exclusively at Maxicare Primary Care Clinics (PCCs).<br>These services availed at PCCs will not be deducted from your Maximum Benefit Limit (MBL).</p>" +
+    "<p><b>List of Accredited Provider Hospitals/Clinics and Doctors</b><br>Working Files: <a href=\"https://docs.google.com/spreadsheets/d/1aOsCNVLq6yVgX11I5e5k23qYom4wIdxaXT27gS6N5YE/edit?gid=2134231315#gid=2134231315\">https://docs.google.com/spreadsheets/d/1aOsCNVLq6yVgX11I5e5k23qYom4wIdxaXT27gS6N5YE/edit?gid=2134231315#gid=2134231315</a><br>Maxicare Website: <a href=\"https://www.maxicare.com.ph/#care-center\">https://www.maxicare.com.ph/#care-center</a></p>" +
+    "<p><b>List of Maxicare Primary Care Clinics (PCCs)</b><br>Maxicare Website: <a href=\"https://www.maxicare.com.ph/services/visit-locations\">https://www.maxicare.com.ph/services/visit-locations</a></p>" +
+    "<p><b>9 Major Hospitals of Maxicare</b></p><ul>" + ["Asian Hospital and Medical Center", "Cardinal Santos Medical Center", "Cebu Doctors University Hospital", "Chong Hua Hospital", "Davao Doctors Hospital", "Makati Medical Center", "St. Luke's Medical Center - Global City", "St. Luke's Medical Center - Quezon City", "The Medical City"].map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>" +
+    "<p>I'd be happy to discuss our products and programs in greater detail at your most convenient time.<br>When would be a good time to schedule the meeting, this week or next week?</p>" +
+    "<p>Should you have any questions or need clarifications, please feel free to contact me at 0977-217-6388 (Viber/WhatsApp/Telegram) or email me at <a href=\"mailto:karlaluansing.maxicare@gmail.com\">karlaluansing.maxicare@gmail.com</a>.</p>" +
+    "<p>I hope to hear from you soon and look forward to the opportunity to partner with your company as your trusted Health Benefits Solutions Partner.</p><p>Thank you.</p>" + KARLA_SIGNATURE;
   function corpTemplate(name) { return "<p>Dear " + e(name) + ",</p>" + CORP_BODY; }
   // Karla's Maxicare Corporate email, word for word as Paolo sent it (2026-11-25); line breaks rebuilt from the pasted text; "Sir/Madam" becomes the client's name.
   var CORP_BODY = "<p>Good day!</p>" +
@@ -732,6 +787,7 @@
     if (k === "mxs") return smeTemplate(c.name);
     if (k === "mxc") return corpTemplate(c.name);
     if (k === "mxp") return prepaidTemplate(c.name);
+    if (k === "mxv") return mvcTemplate(c.name);
     if (k === "mxi" || k === "mxf") return mxTemplate(c.name);
     var h = letterTop(c, c.name);
     h += "<p>Thank you for your interest in a <b>" + e(G.co + " " + G.type) + "</b> plan" + (c.grp ? " for " + e(c.org) : "") + ". Below is a summary of what we have noted so far; I'll follow up with the plan options and rates.</p>";
@@ -756,7 +812,7 @@
   function runChecks(o) {
     var out = [], c = o.c;
     function add(s, t) { out.push({ s: s, t: t }); }
-    if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp") return smeChecks(o, add, out);
+    if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp" || o.kind === "mxv") return smeChecks(o, add, out);
     if (o.kind !== "generic") {
       var bad = [];
       o.calc.forEach(function (m) {
@@ -815,7 +871,7 @@
   }
 
   function smeChecks(o, add, out) {
-    var c = o.c, corp = o.kind === "mxc", pre = o.kind === "mxp", tOk = o.email === (pre ? prepaidTemplate(c.name) : corp ? corpTemplate(c.name) : smeTemplate(c.name)), tName = pre ? "Karla's Maxicare Prepaid template" : corp ? "Karla's Maxicare Corporate template" : "Karla's MaxicarePlus SME template";
+    var c = o.c, mvc = o.kind === "mxv", corp = o.kind === "mxc" || mvc, pre = o.kind === "mxp", tOk = o.email === (pre ? prepaidTemplate(c.name) : mvc ? mvcTemplate(c.name) : corp ? corpTemplate(c.name) : smeTemplate(c.name)), tName = pre ? "Karla's Maxicare Prepaid template" : mvc ? "Karla's MPlus vs Corporate template" : corp ? "Karla's Maxicare Corporate template" : "Karla's MaxicarePlus SME template";
     if (pre) add("ok", "Maxicare Prepaid Health Cards (LifesavER and PRIMA) for " + c.name + ".");
     else if (corp) add(c.org ? "ok" : "fail", c.org ? "Company: " + c.org + "." : "No company name.");
     else add(c.opt ? "ok" : "fail", c.opt ? "Plan option: " + c.opt.n + (c.org ? ", for " + c.org : "") + "." : "No plan option picked.");
@@ -824,7 +880,7 @@
     add(/Please consider the environment/.test(o.email) ? "ok" : "warn", /Please consider the environment/.test(o.email) ? "Has Karla's signature, the spot for her signature image, and the disclaimer." : "The line where Karla's signature image goes is missing.");
     add(EMAIL_RE.test(o.to) ? "ok" : "fail", "Client email address looks valid (" + o.to + ").");
     var miss = o.files.filter(function (f) { return f.missing; });
-    add(miss.length ? "warn" : "ok", o.files.length + " files to attach for " + (pre ? "Maxicare Prepaid" : corp ? "Maxicare Corporate" : c.opt.n) + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." + (miss.length ? " Upload them in Settings > Files and link them to this attachment, or attach them from your own files in Outlook: " + miss.map(function (f) { return f.label; }).join(", ") + "." : ""));
+    add(miss.length ? "warn" : "ok", o.files.length + " files to attach for " + (pre ? "Maxicare Prepaid" : mvc ? "MPlus vs Corporate" : corp ? "Maxicare Corporate" : c.opt.n) + ": " + o.files.map(function (f) { return f.label; }).join(", ") + "." + (miss.length ? " Upload them in Settings > Files and link them to this attachment, or attach them from your own files in Outlook: " + miss.map(function (f) { return f.label; }).join(", ") + "." : ""));
     return out;
   }
   // Karla's signature image (Paolo, 2026-11-24) goes just above the environment line (moved there 2026-11-25). Outlook drafts made by the connector can't hold
@@ -880,13 +936,13 @@
       (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
-    if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp") G.tab = "email";
+    if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp" || o.kind === "mxv") G.tab = "email";
     else h += '<div class="chips" role="group" aria-label="Show" style="margin:0"><button class="chip" data-pg="pgtab" data-v="email" aria-pressed="' + (G.tab !== "proposal") + '">Email template</button><button class="chip" data-pg="pgtab" data-v="proposal" aria-pressed="' + (G.tab === "proposal") + '">Proposal</button></div>';
     h += '<div class="z1-kv"><div><small>To</small><span>' + e(o.to) + '</span></div><div><small>Subject</small><span>' + e(o.subject) + '</span></div>' + (o.total ? '<div><small>Family total, annual</small><span>' + o.total[0].map(peso0).join(" · ") + '</span></div>' : "") + '</div>';
     var canEdit = !dr && (!ap || ap.state === "waiting" || ap.state === "changes");
     if (G.tab !== "proposal" && G.mailEdit && canEdit) return h + mailEditor(o) + '</div>';
     if (G.tab !== "proposal" && canEdit) h += '<div class="actions" style="margin:0"><button class="btn sm" data-pg="mailedit">Edit the email</button><span class="muted small">' + (o.edited ? "Edited by you from Karla's template." : "Starts from Karla's template. You can change it until it's approved.") + "</span></div>";
-    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : o.kind === "mxs" ? '<p class="muted small"><i>The ' + e(o.c.opt.n) + ' proposal and the setup template go as attachments 3 and 4.</i></p>' : o.kind === "mxc" ? '<p class="muted small"><i>The Corporate Standard Plan, the Set Up template and the PCAF go as attachments.</i></p>' : o.kind === "mxp" ? '<p class="muted small"><i>The pubmat and the Prepaid Health Cards 2026 proposal go as attachments.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
+    h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : o.kind === "mxs" ? '<p class="muted small"><i>The ' + e(o.c.opt.n) + ' proposal and the setup template go as attachments 3 and 4.</i></p>' : o.kind === "mxc" ? '<p class="muted small"><i>The Corporate Standard Plan, the Set Up template and the PCAF go as attachments.</i></p>' : o.kind === "mxp" ? '<p class="muted small"><i>The pubmat and the Prepaid Health Cards 2026 proposal go as attachments.</i></p>' : o.kind === "mxv" ? '<p class="muted small"><i>The Option 1 (MPlus) and Option 2 (Corporate) files go as attachments.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
     return h;
   }
   var MAIL_SERVER = "Microsoft 365";
