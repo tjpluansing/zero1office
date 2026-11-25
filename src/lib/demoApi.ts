@@ -9,7 +9,11 @@ import { computeEffective } from "./permissions";
 import type {
   AccessReviewData, IntegrationEvent, IntegrationRow, IntegrationRun, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
+  FollowupEvent, FollowupRow, FollowupSettings,
 } from "./types";
+import {
+  CLOSED, DEFAULT_SETTINGS, MINIMAL_TEXT_ERROR, addBusinessDays, afterChase, daysBetween, hasLongNumber, todayIso,
+} from "./followups";
 
 const P = (page: string, page_label: string, action: Action, description: string, sort: number): Permission =>
   ({ key: `${page}.${action}`, page, page_label, action, description, sort });
@@ -33,6 +37,12 @@ const permissions: Permission[] = [
   P("billing", "Billing & SOA", "delete", "Delete statements", 43),
   P("billing", "Billing & SOA", "export", "Export statements", 44),
   P("billing", "Billing & SOA", "approve", "Approve a statement before sending", 45),
+  P("followups", "Follow-ups", "view", "See the follow-up queue", 46),
+  P("followups", "Follow-ups", "create", "Add pending items to chase", 47),
+  P("followups", "Follow-ups", "edit", "Log chases, mark received, escalate to Karla", 48),
+  P("followups", "Follow-ups", "delete", "Delete follow-up items", 49),
+  P("followups", "Follow-ups", "export", "Export the follow-up queue", 49),
+  P("followups", "Follow-ups", "approve", "Waive or cancel a requirement, reopen a waived item", 49),
   P("reports", "Reports", "view", "See reports", 50),
   P("reports", "Reports", "export", "Export reports", 51),
   P("admin_users", "Manage Users", "view", "See the user directory", 60),
@@ -52,16 +62,16 @@ const catalog: Catalog = {
   roles: [
     { id: "super_admin", name: "Super Admin", description: "Everything, including users and settings. Cannot be locked out.", is_super: true, sort: 10 },
     { id: "agent", name: "Agent", description: "Licensed agent: all client, quoting, billing and report work, including approvals.", is_super: false, sort: 20 },
-    { id: "assistant", name: "Assistant", description: "Follows up pending items: add and update clients, draft quotes, see billing status. No approvals, deletes, exports, reports or admin.", is_super: false, sort: 30 },
+    { id: "assistant", name: "Assistant", description: "Follows up pending items: works the follow-up queue, adds and updates clients, drafts quotes, sees billing status. No approvals, deletes, exports, reports or admin.", is_super: false, sort: 30 },
     { id: "no_access", name: "No access", description: "Signed in but waiting for an admin to grant access.", is_super: false, sort: 99 },
   ],
   rolePermissions: {
     super_admin: [],
     agent: permissions
-      .filter((p) => ["dashboard", "clients", "quotes", "billing", "reports"].includes(p.page) || p.key === "audit_log.view")
+      .filter((p) => ["dashboard", "clients", "quotes", "billing", "followups", "reports"].includes(p.page) || p.key === "audit_log.view")
       .map((p) => p.key),
     assistant: ["dashboard.view", "clients.view", "clients.create", "clients.edit", "quotes.view", "quotes.create",
-      "quotes.edit", "billing.view"],
+      "quotes.edit", "billing.view", "followups.view", "followups.create", "followups.edit"],
     no_access: [],
   },
 };
@@ -73,6 +83,9 @@ interface DemoState {
   reviews: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string }[];
   events: IntegrationEvent[];
   runs: IntegrationRun[];
+  followups: FollowupRow[];
+  followupEvents: FollowupEvent[];
+  followupSettings: FollowupSettings;
 }
 
 const POLICY: Policy = {
@@ -95,7 +108,7 @@ const POLICY: Policy = {
 };
 const sensitive = (k: string) => /^(admin_users|admin_settings|integrations)\./.test(k) || k.endsWith(".export");
 
-const KEY = "z1-demo-state-v3";
+const KEY = "z1-demo-state-v4";
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 const ev = (id: number, event_type: string, summary: string | null, status: IntegrationEvent["status"], attempts: number,
   x: { result?: string; last_error?: string; next?: number; by?: IntegrationEvent["verified_by"] } = {}): IntegrationEvent => ({
@@ -151,14 +164,57 @@ function seed(): DemoState {
       { id: "c3", full_name: "Mark Santos", company: "Santos Bakery", email: null, phone: "0917 000 0003", insurer: "Oona", product: "Non-Life – Fire", status: "lead", created_at: hoursAgo(20) },
     ],
     audit: [],
+    ...seedFollowups(),
   };
+}
+
+function seedFollowups(): Pick<DemoState, "followups" | "followupEvents" | "followupSettings"> {
+  const t = todayIso();
+  const d = (n: number) => {
+    if (n >= 0) return addBusinessDays(t, n);
+    const x = new Date(`${t}T12:00:00`);
+    x.setDate(x.getDate() + n);
+    return x.toISOString().slice(0, 10);
+  };
+  const base = { reference: null, felix_drafts: true, assignee_id: "u-assistant", notes: null, ghl_link: null,
+    escalation_reason: null, last_chased_at: null, closed_at: null, attempts: 0, created_at: hoursAgo(72), updated_at: hoursAgo(5) };
+  const followups: FollowupRow[] = [
+    { ...base, id: "f1", title: "Signed application form", kind: "signature", party: "client", client_id: "c2",
+      insurer: "FWD", channel: "viber", status: "waiting", due_on: d(4), next_chase_on: t, attempts: 1, last_chased_at: hoursAgo(50) },
+    { ...base, id: "f2", title: "Proof of payment", kind: "payment", party: "client", client_id: "c1",
+      insurer: "Maxicare", channel: "email", status: "escalated", due_on: d(-1), next_chase_on: d(-1), attempts: 3,
+      last_chased_at: hoursAgo(26), escalation_reason: "No reply after 3 follow-ups" },
+    { ...base, id: "f3", title: "Insurer reply on application", kind: "insurer_reply", party: "insurer", client_id: "c2",
+      insurer: "FWD", reference: "APP-2026-118", channel: "email", status: "open", due_on: d(-1), next_chase_on: t },
+    { ...base, id: "f4", title: "Census / employee list for group quote", kind: "document", party: "client", client_id: "c3",
+      insurer: null, channel: "messenger", status: "open", due_on: d(8), next_chase_on: d(2) },
+    { ...base, id: "f5", title: "Official receipt from insurer", kind: "insurer_reply", party: "insurer", client_id: "c1",
+      insurer: "Maxicare", channel: "email", status: "waiting", due_on: null, next_chase_on: d(1), attempts: 1, last_chased_at: hoursAgo(20) },
+    { ...base, id: "f6", title: "Health declaration form", kind: "document", party: "client", client_id: "c2",
+      insurer: "FWD", channel: "email", status: "done", due_on: d(-3), next_chase_on: d(-3), attempts: 2,
+      last_chased_at: hoursAgo(80), closed_at: hoursAgo(30) },
+  ];
+  const ev = (id: number, followup_id: string, h: number, actor_label: string, kind: FollowupEvent["kind"],
+    x: Partial<FollowupEvent> = {}): FollowupEvent =>
+    ({ id, followup_id, at: hoursAgo(h), actor_label, kind, channel: null, note: null, details: {}, ...x });
+  const followupEvents: FollowupEvent[] = [
+    ev(9, "f6", 30, "assistant@ask-karla.com", "status", { details: { from: "waiting", to: "done" }, note: null }),
+    ev(8, "f2", 26, "assistant@ask-karla.com", "chased", { channel: "phone", note: "Client asked for the SOA again", details: { attempt: 3, drafted_by: "Felix" } }),
+    ev(7, "f2", 26, "assistant@ask-karla.com", "escalated", { details: { from: "waiting", to: "escalated", reason: "No reply after 3 follow-ups" } }),
+    ev(6, "f5", 20, "assistant@ask-karla.com", "chased", { channel: "email", details: { attempt: 1, drafted_by: "Felix" } }),
+    ev(5, "f1", 50, "assistant@ask-karla.com", "chased", { channel: "viber", details: { attempt: 1, drafted_by: "Felix" } }),
+    ev(4, "f2", 75, "assistant@ask-karla.com", "chased", { channel: "email", details: { attempt: 2, drafted_by: "Felix" } }),
+    ev(3, "f2", 120, "assistant@ask-karla.com", "chased", { channel: "email", details: { attempt: 1, drafted_by: "Felix" } }),
+    ...followups.map((f, i) => ev(-i - 1, f.id, 140, "karla@ask-karla.com", "created", { details: { title: f.title, party: f.party } })),
+  ];
+  return { followups, followupEvents, followupSettings: { ...DEFAULT_SETTINGS } };
 }
 
 export function createDemoApi(): Api {
   let state: DemoState;
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
-    if (!state?.users || !state.reviews || !state.integrations || !state.events) throw new Error();
+    if (!state?.users || !state.reviews || !state.integrations || !state.events || !state.followups) throw new Error();
   } catch {
     state = seed();
   }
@@ -186,6 +242,16 @@ export function createDemoApi(): Api {
   const log = (action: string, target_id: string | null, details: Record<string, unknown> = {}, target_type = "user") => {
     state.audit.unshift({ id: state.audit.length + 1, at: new Date().toISOString(), actor_email: me()?.email ?? null,
       action, target_type, target_id, details });
+  };
+  const followup = (id: string) => {
+    const f = state.followups.find((x) => x.id === id);
+    if (!f) throw new Error("Follow-up not found");
+    return f;
+  };
+  const fev = (followup_id: string, kind: FollowupEvent["kind"], x: Partial<FollowupEvent> = {}, actor?: string) => {
+    const id = Math.max(0, ...state.followupEvents.map((e) => e.id)) + 1;
+    state.followupEvents.push({ id, followup_id, at: new Date().toISOString(), actor_label: actor ?? me()?.email ?? "system",
+      kind, channel: null, note: null, details: {}, ...x });
   };
   const emit = (e: AuthEvent) => listeners.forEach((l) => l(e));
   const temp = () => Math.random().toString(36).slice(2, 10) + "-Z1!";
@@ -459,5 +525,105 @@ export function createDemoApi(): Api {
     },
     async deleteClient(id) { need("clients.delete"); state.clients = state.clients.filter((c) => c.id !== id); save(); },
     async exportClients() { need("clients.export"); log("export", null, { rows: state.clients.length }, "clients"); save(); return state.clients; },
+
+    async listFollowups() {
+      need("followups.view");
+      // same overdue sweep the database runs on a schedule
+      const today = todayIso();
+      for (const f of state.followups) {
+        if ((f.status === "open" || f.status === "waiting") && f.due_on
+          && daysBetween(f.due_on, today) >= state.followupSettings.escalate_overdue_days) {
+          const reason = `${daysBetween(f.due_on, today)} days past the due date`;
+          fev(f.id, "escalated", { details: { from: f.status, to: "escalated", reason } }, "system");
+          Object.assign(f, { status: "escalated", escalation_reason: reason });
+          save();
+        }
+      }
+      return state.followups.map((f) => ({ ...f }));
+    },
+    async listFollowupEvents(id) {
+      need("followups.view");
+      return state.followupEvents.filter((e) => e.followup_id === id).sort((a, b) => b.at.localeCompare(a.at));
+    },
+    async getFollowupSettings() { need("followups.view"); return { ...state.followupSettings }; },
+    async saveFollowup(row) {
+      await wait();
+      if ([row.title, row.notes].some(hasLongNumber)) throw new Error(MINIMAL_TEXT_ERROR);
+      if (row.title.trim().length < 3) throw new Error("Describe what is pending (at least 3 characters)");
+      if (row.party === "insurer" && !row.insurer) throw new Error("Pick the insurer we are waiting on");
+      if (row.party !== "insurer" && !row.client_id && !row.id) throw new Error("Pick the client we are waiting on");
+      if (row.id) {
+        need("followups.edit");
+        const f = followup(row.id);
+        Object.assign(f, row, { updated_at: new Date().toISOString() });
+        fev(f.id, "edited");
+      } else {
+        need("followups.create");
+        const id = `f-${Date.now()}`;
+        state.followups.push({
+          kind: "document", party: "client", client_id: null, insurer: null, reference: null, channel: "email",
+          due_on: null, next_chase_on: todayIso(), felix_drafts: true, notes: null, ghl_link: null,
+          ...row, id, status: "open", attempts: 0, last_chased_at: null, escalation_reason: null,
+          assignee_id: state.sessionUserId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), closed_at: null,
+        });
+        fev(id, "created", { details: { title: row.title, party: row.party ?? "client" } });
+      }
+      save();
+    },
+    async logFollowupChase(id, channel, note, fromFelix) {
+      await wait();
+      need("followups.edit");
+      if (hasLongNumber(note)) throw new Error(MINIMAL_TEXT_ERROR);
+      const f = followup(id);
+      if (CLOSED.includes(f.status)) throw new Error("This item is already closed");
+      const next = afterChase(f, state.followupSettings, channel);
+      fev(id, "chased", { channel, note, details: { attempt: next.attempts, drafted_by: fromFelix ? "Felix" : null } });
+      if (next.status === "escalated" && f.status !== "escalated")
+        fev(id, "escalated", { details: { from: f.status, to: "escalated", reason: next.escalation_reason } });
+      Object.assign(f, next, { updated_at: new Date().toISOString() });
+      save();
+    },
+    async setFollowupStatus(id, status, note) {
+      await wait();
+      need("followups.edit");
+      if (hasLongNumber(note)) throw new Error(MINIMAL_TEXT_ERROR);
+      const f = followup(id);
+      if (status === f.status) return;
+      if ((status === "waived" || status === "cancelled") && !can("followups.approve"))
+        throw new Error("Only Karla can waive or cancel a requirement. Escalate it instead.");
+      if ((f.status === "waived" || f.status === "cancelled") && !can("followups.approve"))
+        throw new Error("Only Karla can reopen a waived or cancelled item.");
+      const reason = status === "escalated" ? (note?.trim() || `Escalated by ${me()?.email}`) : null;
+      fev(id, status === "escalated" ? "escalated" : "status", { details: { from: f.status, to: status, reason } });
+      if (note?.trim() && status !== "escalated") fev(id, "note", { note });
+      const closed = CLOSED.includes(status);
+      Object.assign(f, {
+        status,
+        escalation_reason: status === "escalated" ? reason : closed ? f.escalation_reason : null,
+        closed_at: closed ? new Date().toISOString() : null,
+        next_chase_on: !closed && f.next_chase_on < todayIso() ? todayIso() : f.next_chase_on,
+        updated_at: new Date().toISOString(),
+      });
+      save();
+    },
+    async addFollowupNote(id, note) {
+      need("followups.edit");
+      if (hasLongNumber(note)) throw new Error(MINIMAL_TEXT_ERROR);
+      followup(id);
+      fev(id, "note", { note: note.slice(0, 500) });
+      save();
+    },
+    async deleteFollowup(id) {
+      need("followups.delete");
+      state.followups = state.followups.filter((f) => f.id !== id);
+      state.followupEvents = state.followupEvents.filter((e) => e.followup_id !== id);
+      save();
+    },
+    async exportFollowups() {
+      need("followups.export");
+      log("export", null, { rows: state.followups.length }, "followups");
+      save();
+      return state.followups;
+    },
   };
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
 import type { IntegrationRow, SyncLog, TestResult } from "./types";
+import type { FollowupEvent, FollowupRow, FollowupSettings } from "./types";
 import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -201,6 +202,41 @@ export function createSupabaseApi(): Api {
     async exportClients() {
       const rows = must(await sb.rpc("export_clients")) as ClientRow[];
       await sb.rpc("log_export", { p_what: "clients", p_rows: rows.length });
+      return rows;
+    },
+
+    async listFollowups() {
+      return must(await sb.from("followups").select("*").order("next_chase_on")) as FollowupRow[];
+    },
+    async listFollowupEvents(id) {
+      return must(await sb.from("followup_events").select("*").eq("followup_id", id)
+        .order("at", { ascending: false }).limit(100)) as FollowupEvent[];
+    },
+    async getFollowupSettings() {
+      return must(await sb.from("followup_settings").select("chase_every_days,max_attempts,escalate_overdue_days")
+        .single()) as FollowupSettings;
+    },
+    async saveFollowup(row) {
+      const { id, ...fields } = row;
+      if (id) must(await sb.from("followups").update(fields).eq("id", id));
+      else must(await sb.from("followups").insert(fields));
+    },
+    async logFollowupChase(id, channel, note, fromFelix) {
+      must(await sb.rpc("log_followup_chase", { p_id: id, p_channel: channel, p_note: note, p_from_felix: fromFelix }));
+    },
+    async setFollowupStatus(id, status, note) {
+      must(await sb.rpc("set_followup_status", { p_id: id, p_status: status, p_note: note }));
+    },
+    async addFollowupNote(id, note) {
+      must(await sb.rpc("add_followup_note", { p_id: id, p_note: note }));
+    },
+    async deleteFollowup(id) {
+      const rows = must(await sb.from("followups").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete follow-ups.");
+    },
+    async exportFollowups() {
+      const rows = must(await sb.rpc("export_followups")) as FollowupRow[];
+      await sb.rpc("log_export", { p_what: "followups", p_rows: rows.length });
       return rows;
     },
   };

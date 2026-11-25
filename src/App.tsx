@@ -12,6 +12,7 @@ import {
   ChangePasswordPage, ForgotPasswordPage, LoginPage, PendingPage, ResetPasswordPage,
 } from "./pages/auth";
 import ClientsPage from "./pages/Clients";
+import FollowupsPage from "./pages/Followups";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
               <Route path="billing" element={<RequirePermission permission="billing.view">
                 <ModulePage page="billing" title="Billing & SOA" description="Statements of account and payment follow-ups." />
               </RequirePermission>} />
+              <Route path="followups" element={<RequirePermission permission="followups.view"><FollowupsPage /></RequirePermission>} />
               <Route path="reports" element={<RequirePermission permission="reports.view">
                 <ModulePage page="reports" title="Reports" description="Production, renewals and pipeline reports." />
               </RequirePermission>} />
