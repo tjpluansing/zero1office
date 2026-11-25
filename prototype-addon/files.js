@@ -84,7 +84,7 @@
       if (!F.db) { clearTimeout(timer); F.ready = true; rer(); return; }
       F.db.collection("files").onSnapshot(function (snap) {
         clearTimeout(timer); F.ready = true; F.err = "";
-        F.docs = snap.docs.map(function (d) { var o = d.data() || {}; o.id = d.id; o.ext = extOf(o.name); return o; }).filter(function (o) { return o.name && o.asset; });
+        F.docs = snap.docs.map(function (d) { var o = Object.assign({}, d.data() || {}); o.id = d.id; o.ext = extOf(o.name); return o; })  // snapshots are frozen: copy before adding fields.filter(function (o) { return o.name && o.asset; });
         rer();
       }, function () { clearTimeout(timer); F.ready = true; F.err = "Your uploaded files didn't load. Reload the page to try again."; rer(); });
       meter();

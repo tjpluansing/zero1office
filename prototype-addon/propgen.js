@@ -569,7 +569,7 @@
       return r ? { repo: r, path: "", name: r.name, label: f.label } : f;
     });
   }
-  window.Z1PG_SLOTS = ["Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
+  window.Z1PG_SLOTS = ["Karla Luansing_Maxicare_HMO Pubmat", "Maxicare_Corporate_Standard Plan", "Maxicare_Corporate Set Up_Template", "Maxicare_Prospective Corporate Account Form (PCAF)"]
     .concat(SME_OPTS.map(function (o) { return o.prop; }))
     .concat(SME_OPTS.map(function (o) { return o.tpl; }).filter(function (t, i, a) { return a.indexOf(t) === i; }));
   function corpFiles() {
