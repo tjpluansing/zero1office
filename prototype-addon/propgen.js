@@ -942,12 +942,14 @@
     // files
     if (rv.status === "approved") {
       h += '<div class="z1-box"><div class="z1-sect">Files to attach</div>' + (o.files.length ? '<table class="t"><tbody>' + o.files.map(function (f, i) {
-        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r">' + (f.missing ? '<span class="muted small">Not uploaded yet: add it in Settings &gt; Files</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
+        var ln = linkOf(f);
+        return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span>' + linkCell(f, i, ln) + '</td><td class="r">' + (f.missing ? '<span class="muted small">Not uploaded yet: add it in Settings &gt; Files</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' +
+        '<div class="actions" style="margin:6px 0 0"><button class="btn sm pri" data-pg="saveall">Save all files (.zip)</button><span class="muted small">Files with a link are in the email as links, so only the others need attaching in Outlook.</span></div>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
     if (dr && dr.via === "gmail") h += '<div class="z1-box" role="status"><b>The email is in your Gmail Drafts, addressed to ' + e(o.to) + '.</b><span class="small">' + (dr.attached ? dr.attached + " of " + o.files.length + " files are already attached" + (dr.attached < o.files.length ? "; attach the rest from the saved files" : "") : "Attach the " + (o.files.length ? o.files.length + " saved files" : "files")) + (dr.sig ? ", and Karla\'s signature image is in place" : "") + '. Check it, then press Send in Gmail.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Gmail</a>' : '') + '</div>';
     else if (dr && dr.box && dr.box !== KARLA_BOX) h += '<div class="z1-box" role="alert"><b>Heads up: this draft is in ' + e(dr.box) + '\'s Outlook, not Karla\'s.</b><span class="small">Proposals go out from ' + KARLA_BOX + '. Before sending, set From to ' + KARLA_BOX + ' in Outlook (you need Send As on her mailbox), or reconnect Microsoft 365 in claude.ai as Karla so drafts land in her Outlook.</span></div>';
-    if (dr && dr.via !== "gmail") h += '<div class="z1-box" role="status"><b>The email is in ' + (dr.box === KARLA_BOX ? "Karla\'s Outlook Drafts (" + KARLA_BOX + ")" : "the Outlook Drafts") + ', addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    if (dr && dr.via !== "gmail") h += '<div class="z1-box" role="status"><b>The email is in ' + (dr.box === KARLA_BOX ? "Karla\'s Outlook Drafts (" + KARLA_BOX + ")" : "the Outlook Drafts") + ', addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + (function () { var n = o.files.filter(function (f) { return !linkOf(f); }).length, l = o.files.length - n; return (n ? ', attach the ' + n + ' saved file' + (n === 1 ? "" : "s") + ' (Save all files gives them as one zip)' : "") + (l ? ', the ' + l + ' linked file' + (l === 1 ? " is" : "s are") + ' already in the email as links' : ""); })() + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
       (dr ? ghlLine() + '<button class="btn pri" data-pg="new">Start a new proposal</button>' : '<span class="small"><b>From ' + KARLA_BOX + '</b> (Outlook)</span>' +
@@ -1034,7 +1036,7 @@
           return mcp.callTool(GMAIL_SERVER, "create_draft", gi);
         });
       }
-      var input = { to: [o.to], subject: o.subject, body: o.html, bodyType: "html" };
+      var input = { to: [o.to], subject: o.subject, body: withLinks(o), bodyType: "html" };
       if (cc) input.cc = [cc];
       // Drafts land in the signed-in Microsoft 365 mailbox; note which one, so a draft outside Karla's is flagged.
       return mcp.callTool(MAIL_SERVER, "get_me", {}).then(function (r) { var me = (r && r.payload) || {}; box = String(me.mail || me.userPrincipalName || "").toLowerCase(); }, function () { box = ""; })
@@ -1123,6 +1125,59 @@
     if (!g || g.state === "busy") return '<span class="small muted" role="status">Adding the client to GoHighLevel…</span>';
     if (g.state === "ok") return '<span class="small" role="status">✓ In GoHighLevel: Proposals pipeline' + (g.stage ? ", " + e(g.stage) : "") + (g.link ? ' · <a href="' + e(g.link) + '" target="_blank" rel="noopener">Open the contact</a>' : "") + '</span>';
     return '<span class="small" role="alert">' + e(g.msg) + '</span><button class="btn sm" data-pg="ghl">Try again</button>';
+  }
+
+  /* ---------- File links and Save all (Paolo, 2026-11-25: "both") ----------
+     Outlook drafts made through the Microsoft 365 connector can't carry attachments. So: (1) each standard product file
+     can have a OneDrive or SharePoint link, pasted once and shared with everyone in the app (db doc meta/filelinks), and
+     linked files go in the email as links; (2) "Save all files" downloads the rest as one zip to drag into Outlook.
+     The client's own proposal PDF is never linked; it is always attached. */
+  var LK = { map: {}, edit: null, db: null };
+  (function () { var cl = window.claude; if (!cl || !cl.use) return; cl.use("db").then(function (db) { LK.db = db; if (!db) return; try { db.doc("meta/filelinks").onSnapshot(function (d) { var x = d && d.exists ? (typeof d.data === "function" ? d.data() : d.data) : null; LK.map = x && x.map && typeof x.map === "object" ? x.map : {}; if (S.view === "propgen") render(); }, function () { /* no links */ }); } catch (err) { /* no links */ } }, function () { /* no links */ }); })();
+  function okLink(u) { return /^https:\/\/[^\s"'<>]+$/i.test(u || "") && u.length < 600; }
+  function linkOf(f) { if (!f || f.gen) return ""; var u = LK.map[f.name]; return okLink(u) ? u : ""; }
+  function linkCell(f, i, ln) {
+    if (f.gen) return '<br><span class="small muted">Always attached, since it\'s made for this client.</span>';
+    if (LK.edit === String(i)) return '<div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap"><input class="inp" id="pg-link" type="url" maxlength="590" placeholder="Paste the OneDrive share link (anyone with the link)" value="' + e(ln) + '" style="flex:1;min-width:220px"><button class="btn sm pri" data-pg="linksave" data-v="' + i + '">Save link</button><button class="btn sm" data-pg="linkcancel">Cancel</button></div>';
+    return '<br>' + (ln ? '<span class="small">✓ Linked in the email · <a href="' + e(ln) + '" target="_blank" rel="noopener">Open</a> · </span>' : '<span class="small muted">Not linked: attach it in Outlook · </span>') +
+      (LK.db ? '<button class="btn sm" data-pg="linkedit" data-v="' + i + '">' + (ln ? "Change link" : "Add a link") + '</button>' : "");
+  }
+  function linkSave(i) {
+    var f = G.out && G.out.files[Number(i)], el = document.getElementById("pg-link"); if (!f || !el) return;
+    var u = el.value.trim();
+    if (u && !okLink(u)) { say("The link should start with https://"); return; }
+    var m = {}; for (var k in LK.map) m[k] = LK.map[k];
+    if (u) m[f.name] = u; else delete m[f.name];
+    LK.map = m; LK.edit = null; render();
+    if (LK.db) LK.db.doc("meta/filelinks").set({ map: m }).then(function () { say(u ? "Link saved for everyone" : "Link removed"); }, function () { say("The link wasn't saved. Try again."); });
+  }
+  function withLinks(o) {
+    var list = (o.files || []).map(function (f) { return { f: f, u: linkOf(f) }; }).filter(function (x) { return x.u; });
+    if (!list.length) return o.html;
+    var block = "<p>For your reference, you may view and download these files here:</p><ul>" + list.map(function (x) { return '<li><a href="' + e(x.u) + '">' + e(x.f.label) + "</a></li>"; }).join("") + "</ul>";
+    var at = o.html.indexOf("<p>All the best"); if (at < 0) at = o.html.indexOf("<p>Please consider the environment");
+    return at < 0 ? o.html + block : o.html.slice(0, at) + block + o.html.slice(at);
+  }
+  var ZIP_LIB = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js", zipP = null;
+  function zipLib() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    return zipP || (zipP = new Promise(function (ok, no) { var sc = document.createElement("script"); sc.src = ZIP_LIB; sc.async = true; sc.onload = function () { window.JSZip ? ok(window.JSZip) : no(new Error("zip")); }; sc.onerror = function () { zipP = null; no(new Error("zip")); }; document.head.appendChild(sc); }));
+  }
+  function saveAll() {
+    var o = G.out; if (!o) return;
+    var list = o.files.filter(function (f) { return !f.missing && !linkOf(f); });
+    if (!list.length) { say("Every file is linked in the email; nothing to attach"); return; }
+    var cl = window.claude, used = {};
+    say("Packing " + list.length + " file" + (list.length === 1 ? "" : "s") + "…");
+    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), zipLib()]).then(function (x) {
+      if (!x[0]) { say("Saving files isn't available in this view"); return; }
+      var zip = new x[1](), n = 0;
+      return Promise.all(list.map(function (f) {
+        return fileBlob(f).then(function (b) { var p = f.name.replace(/[\\/:*?"<>|]+/g, " "), k = 2; while (used[p]) p = p.replace(/(\.[a-z0-9]+)?$/i, " (" + k++ + ")$1"); used[p] = 1; zip.file(p, b); n++; }, function () { /* skip a file that won't load */ });
+      })).then(function () { return zip.generateAsync({ type: "blob" }); })
+        .then(function (blob) { return x[0].save({ filename: String(o.subject || "Proposal files").replace(/[\\/:*?"<>|]+/g, " ") + ".zip", data: blob }); })
+        .then(function () { say(n + " file" + (n === 1 ? "" : "s") + " saved as one zip"); }, function (err) { if (err && err.code !== "dismissed" && err.code !== "declined") say("The zip file wasn't saved"); });
+    }, function () { say("Saving as a zip file isn't available right now"); });
   }
   function saveFile(i) {
     var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
@@ -1295,6 +1350,10 @@
     else if (a === "new") { reset(true); }
     else if (a === "draft") { makeDraft(); return; }
     else if (a === "ghl") { ghlLog(); return; }
+    else if (a === "saveall") { saveAll(); return; }
+    else if (a === "linkedit") { LK.edit = v; }
+    else if (a === "linkcancel") { LK.edit = null; }
+    else if (a === "linksave") { linkSave(v); return; }
     else if (a === "via") { setVia(v); }
     else if (a === "save") { saveFile(Number(v)); return; }
     else if (a === "savesig") { saveFile(-1); return; }
