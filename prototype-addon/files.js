@@ -556,6 +556,7 @@
   window.Z1Files.upload = upload;
   window.Z1Files.view = function (id) { viewFile(id); };
   window.Z1Files.ready = function () { return !!(F.assets && F.db); };
+  window.Z1Files.rows = function () { return F.docs.slice(); };
   window.Z1Files.chatFolder = function () {
     var list = folders(), hit = list.filter(function (x) { return x.name === "Chat files" && !fById(x.parent); })[0];
     if (hit) return hit.id;
