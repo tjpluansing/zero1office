@@ -939,10 +939,11 @@
         return '<tr><td><b>' + e(f.label) + '</b><br><span class="muted small">' + e(f.name) + '</span></td><td class="r">' + (f.missing ? '<span class="muted small">Not uploaded yet: add it in Settings &gt; Files</span>' : '<button class="btn sm" data-pg="save" data-v="' + i + '">Save file</button>') + '</td></tr>'; }).join("") + '</tbody></table>' : '<p class="small muted" style="margin:0">None set up for this product yet.</p>') + (o.kind !== "generic" ? '<p class="small" style="margin:0">Karla\'s signature image isn\'t attached; it goes in the email from your Outlook signature. <button class="btn sm" data-pg="savesig">Save the signature image</button> to set it up once in Outlook (Settings > Mail > Compose and reply > Email signature).</p>' : '') + '</div>';
       h += '<label class="fld">CC (optional)<input class="inp" id="pg-cc" data-pgf="cc" type="email" maxlength="160" placeholder="e.g. karla@ask-karla.com" value="' + e(G.f.cc || "") + '" autocomplete="off"></label>';
     }
-    if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    if (dr && dr.via === "gmail") h += '<div class="z1-box" role="status"><b>The email is in your Gmail Drafts, addressed to ' + e(o.to) + '.</b><span class="small">' + (dr.attached ? dr.attached + " of " + o.files.length + " files are already attached" + (dr.attached < o.files.length ? "; attach the rest from the saved files" : "") : "Attach the " + (o.files.length ? o.files.length + " saved files" : "files")) + (dr.sig ? ", and Karla\'s signature image is in place" : "") + '. Check it, then press Send in Gmail.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Gmail</a>' : '') + '</div>';
+    else if (dr) h += '<div class="z1-box" role="status"><b>The email is in your Outlook Drafts, addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', attach the ' + (o.files.length ? o.files.length + " saved files" : "files") + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
-      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : "Create the Outlook draft") + '</button>' : "") +
+      (dr ? '<button class="btn pri" data-pg="new">Start a new proposal</button>' : rv.status === "approved" && ap && ap.state === "approved" ? '<span class="chips" role="group" aria-label="Send with" style="margin:0"><button class="chip" data-pg="via" data-v="outlook" aria-pressed="' + (mailVia() === "outlook") + '">Outlook (Microsoft 365)</button><button class="chip" data-pg="via" data-v="gmail" aria-pressed="' + (mailVia() === "gmail") + '">Gmail</button></span><button class="btn pri" data-pg="draft"' + (G.sending ? " disabled" : "") + '>' + (G.sending ? "Creating the draft…" : mailVia() === "gmail" ? "Create the Gmail draft" : "Create the Outlook draft") + '</button>' : "") +
       (dr ? "" : '<button class="btn" data-pg="edit">Edit the details</button>') + '<button class="btn" data-pg="copy">Copy the email</button></div>';
     // email template and proposal
     if (o.kind === "mxs" || o.kind === "mxc" || o.kind === "mxp" || o.kind === "mxv") G.tab = "email";
@@ -954,35 +955,86 @@
     h += '<div class="z1-box pg-mail" id="pgMail" style="background:var(--surface);max-height:none">' + (G.tab === "proposal" ? o.proposal : withSigImage(o) + (o.kind === "generic" ? '<p class="muted small"><i>The proposal follows below the signature in the same email.</i></p>' : o.kind === "mxs" ? '<p class="muted small"><i>The ' + e(o.c.opt.n) + ' proposal and the setup template go as attachments 3 and 4.</i></p>' : o.kind === "mxc" ? '<p class="muted small"><i>The Corporate Standard Plan, the Set Up template and the PCAF go as attachments.</i></p>' : o.kind === "mxp" ? '<p class="muted small"><i>The pubmat and the Prepaid Health Cards 2026 proposal go as attachments.</i></p>' : o.kind === "mxv" ? '<p class="muted small"><i>The Option 1 (MPlus) and Option 2 (Corporate) files go as attachments.</i></p>' : '<p class="muted small"><i>The proposal goes as a PDF, the second attachment (' + e(o.files[1] ? o.files[1].name : "") + '). See the Proposal tab.</i></p>')) + '</div></div>';
     return h;
   }
-  var MAIL_SERVER = "Microsoft 365";
-  function mailError(err) {
-    var c = err && err.code;
-    if (c === "needs_reauth") return "Your Microsoft 365 sign-in has expired. Reconnect it in claude.ai Settings, Connectors, then try again.";
-    if (c === "server_not_connected" || c === "selection_required") return "Microsoft 365 isn't connected for you. Add it in claude.ai Settings, Connectors, then try again.";
-    if (c === "not_in_manifest" || c === "not_granted" || c === "consent_required") return "Outlook was turned off for this page. Allow Microsoft 365 in this page's permissions, then try again.";
+  var MAIL_SERVER = "Microsoft 365", GMAIL_SERVER = "Gmail";
+  /* Send with Outlook or Gmail (Paolo, 2026-11-25). The choice is remembered on this device only. */
+  function mailVia() { if (!G.via) { try { G.via = localStorage.getItem("z1pg-via"); } catch (err) { /* optional */ } } return G.via === "gmail" ? "gmail" : "outlook"; }
+  function setVia(v) { G.via = v === "gmail" ? "gmail" : "outlook"; G.mailErr = ""; try { localStorage.setItem("z1pg-via", G.via); } catch (err) { /* optional */ } }
+  function mailError(err, via) {
+    var c = err && err.code, sv = via === "gmail" ? "Gmail" : "Microsoft 365", app = via === "gmail" ? "Gmail" : "Outlook";
+    if (c === "needs_reauth") return "Your " + sv + " sign-in has expired. Reconnect it in claude.ai Settings, Connectors, then try again.";
+    if (c === "server_not_connected" || c === "selection_required") return sv + " isn't connected for you. Add it in claude.ai Settings, Connectors, then try again.";
+    if (c === "not_in_manifest") return app + " drafts aren't switched on for this page yet. Ask Paolo to turn on " + sv + " for Zero1Office, or copy the email.";
+    if (c === "not_granted" || c === "consent_required") return app + " was turned off for this page. Allow " + sv + " in this page's permissions, then try again.";
     if (c === "approval_required") return "Creating the draft wasn't approved. Try again and allow it when asked.";
-    if (c === "blocked_by_policy") return "Your organization's settings don't allow this page to use Outlook.";
-    if (c === "rate_limited") return "Outlook is busy. Wait a minute, then try again.";
+    if (c === "blocked_by_policy") return "Your organization's settings don't allow this page to use " + app + ".";
+    if (c === "rate_limited") return app + " is busy. Wait a minute, then try again.";
     return "The draft wasn't created" + (err && err.message ? " (" + e(String(err.message).slice(0, 200)) + ")" : "") + ". You can try again or copy the email.";
+  }
+  // One file's bytes, the same way "Save" gets them.
+  function fileBlob(f) {
+    if (f.gen === "pdf") return proposalPdf(G.out);
+    if ((f.repo || f.b64) && window.Z1Files) return window.Z1Files.blob(f.repo || f);
+    return fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); });
+  }
+  function b64(blob) {
+    return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { var u = String(r.result); ok(u.slice(u.indexOf(",") + 1)); }; r.onerror = no; r.readAsDataURL(blob); });
+  }
+  var GMAIL_MAX = 17 * 1024 * 1024; // Gmail allows 25 MB per email, and attachments grow by a third when encoded
+  // Gmail drafts can carry the files and the signature image, so attach what fits.
+  function gmailParts(o) {
+    var list = o.files.slice(), sigAt = o.kind === "generic" ? -1 : o.html.indexOf("<p>Please consider the environment");
+    var jobs = list.map(function (f) { return fileBlob(f).then(function (bl) { return { f: f, bl: bl }; }, function () { return null; }); });
+    if (sigAt >= 0) jobs.push(fetch(SIG_IMG).then(function (r) { if (!r.ok) throw 0; return r.blob(); }).then(function (bl) { return { sig: true, bl: bl }; }, function () { return null; }));
+    return Promise.all(jobs).then(function (got) {
+      var att = [], total = 0, sig = null, n = 0, chain = Promise.resolve();
+      got.forEach(function (g) {
+        if (!g || !g.bl || total + g.bl.size > GMAIL_MAX) return;
+        total += g.bl.size;
+        chain = chain.then(function () { return b64(g.bl); }).then(function (c) {
+          if (g.sig) sig = { content: c, filename: "Karla Luansing - MAXICARE Email Signature.jpg", mimeType: g.bl.type || "image/jpeg", inline: true };
+          else { att.push({ content: c, filename: g.f.name, mimeType: g.bl.type || "application/octet-stream" }); n++; }
+        });
+      });
+      return chain.then(function () {
+        var html = o.html;
+        if (sig) { att.push(sig); html = html.slice(0, sigAt) + '<p><img src="cid:att' + (att.length - 1) + '" alt="Karla Luansing, Maxicare" style="max-width:600px;height:auto"></p>' + html.slice(sigAt); }
+        return { att: att, html: html, n: n, sig: !!sig };
+      });
+    });
   }
   function makeDraft() {
     var o = G.out; var ap = pgItem(); if (!o || G.sending || G.draft || !G.review || G.review.status !== "approved" || !ap || ap.state !== "approved") return;
-    var cc = (G.f.cc || "").trim();
+    var cc = (G.f.cc || "").trim(), via = mailVia(), app = via === "gmail" ? "Gmail" : "Outlook", parts = null;
     if (cc && !EMAIL_RE.test(cc)) { G.mailErr = "The CC address doesn't look right."; render(); return; }
     G.sending = true; G.mailErr = ""; render();
-    var input = { to: [o.to], subject: o.subject, body: o.html, bodyType: "html" };
-    if (cc) input.cc = [cc];
+    if (via === "gmail") say("Attaching the files…");
     var cl = window.claude;
-    (cl && cl.use ? cl.use("mcp") : Promise.resolve(null)).then(function (mcp) {
+    Promise.all([cl && cl.use ? cl.use("mcp") : Promise.resolve(null), via === "gmail" ? gmailParts(o) : null]).then(function (x) {
+      var mcp = x[0]; parts = x[1];
       if (!mcp) throw { code: "unavailable_here" };
+      if (via === "gmail") {
+        var gi = { to: [o.to], subject: o.subject, htmlBody: parts.html };
+        if (cc) gi.cc = [cc];
+        if (parts.att.length) gi.attachments = parts.att;
+        return mcp.callTool(GMAIL_SERVER, "create_draft", gi).catch(function (err) {
+          // Too big or refused for the files: try once more with the text only, and attach the files in Gmail.
+          var c = err && err.code;
+          if (!gi.attachments || /needs_reauth|server_not_connected|selection_required|not_in_manifest|not_granted|consent_required|approval_required|blocked_by_policy|rate_limited/.test(c || "")) throw err;
+          parts.n = 0; parts.sig = false; delete gi.attachments; gi.htmlBody = o.html;
+          return mcp.callTool(GMAIL_SERVER, "create_draft", gi);
+        });
+      }
+      var input = { to: [o.to], subject: o.subject, body: o.html, bodyType: "html" };
+      if (cc) input.cc = [cc];
       return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input);
     }).then(function (res) {
-      var p = (res && res.payload) || {}, link = p.webLink || p.weblink || p.web_link || "";
-      G.sending = false; G.draft = { link: /^https:\/\//.test(link) ? link : "" };
-      log("draft"); ap.state = "sent"; ap.when = "Draft in Outlook " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ } clearPersonal(); say("Draft ready in Outlook"); render();
+      var p = (res && res.payload) || {}, link = p.viewUrl || p.webLink || p.weblink || p.web_link || "";
+      if (via === "gmail" && !link && p.id) link = "https://mail.google.com/mail/#drafts";
+      G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false };
+      log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ } clearPersonal(); say("Draft ready in " + app); render();
     }, function (err) {
       G.sending = false;
-      G.mailErr = err && err.code === "unavailable_here" ? "Outlook can't be reached from this view. Open Zero1Office on claude.ai with Microsoft 365 connected, or copy the email." : mailError(err);
+      G.mailErr = err && err.code === "unavailable_here" ? app + " can't be reached from this view. Open Zero1Office on claude.ai with " + (via === "gmail" ? "Gmail" : "Microsoft 365") + " connected, or copy the email." : mailError(err, via);
       render();
     });
   }
@@ -990,7 +1042,7 @@
     var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
     var cl = window.claude;
     if (f.gen === "pdf") say("Making the proposal PDF…");
-    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), f.gen === "pdf" ? proposalPdf(G.out) : (f.repo || f.b64) && window.Z1Files ? window.Z1Files.blob(f.repo || f) : fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); })])
+    Promise.all([cl && cl.use ? cl.use("downloads") : Promise.resolve(null), i === -1 ? fetch(f.path).then(function (r) { if (!r.ok) throw new Error("missing"); return r.blob(); }) : fileBlob(f)])
       .then(function (x) {
         if (!x[0]) { say("Saving files isn't available in this view"); return; }
         return x[0].save({ filename: f.name, data: x[1] }).then(function () { say(f.label + " saved"); }, function (err) { if (err && err.code !== "dismissed" && err.code !== "declined") say("The file wasn't saved"); });
@@ -1119,8 +1171,8 @@
   function history() {
     var h = store(HIST_KEY) || []; if (!h.length) return "";
     return '<div class="card pad stack"><h3>Proposals from this browser</h3><table class="t"><thead><tr><th>When</th><th>Company</th><th>Type</th><th>Checked by</th><th>Status</th></tr></thead><tbody>' +
-      h.slice(0, 10).map(function (x) { return '<tr><td>' + e(new Date(x.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + '</td><td>' + e(x.co) + '</td><td>' + e(x.type) + '</td><td>' + e(x.by || "—") + '</td><td>' + (x.status === "draft" ? "Draft in Outlook" : "Sent") + '</td></tr>'; }).join("") +
-      '</tbody></table><p class="muted small" style="margin:0">Client names and emails aren\'t kept here; they are in Outlook.</p></div>';
+      h.slice(0, 10).map(function (x) { return '<tr><td>' + e(new Date(x.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + '</td><td>' + e(x.co) + '</td><td>' + e(x.type) + '</td><td>' + e(x.by || "—") + '</td><td>' + (x.status === "draft" ? "Draft created" : "Sent") + '</td></tr>'; }).join("") +
+      '</tbody></table><p class="muted small" style="margin:0">Client names and emails aren\'t kept here; they are in Outlook or Gmail.</p></div>';
   }
   function copyMail() {
     if (!G.out) return;
@@ -1156,6 +1208,7 @@
     else if (a === "edit") { G.out = null; G.review = null; G.draft = null; G.mailErr = ""; G.mailEdit = false; G.tplDraft = null; }
     else if (a === "new") { reset(true); }
     else if (a === "draft") { makeDraft(); return; }
+    else if (a === "via") { setVia(v); }
     else if (a === "save") { saveFile(Number(v)); return; }
     else if (a === "savesig") { saveFile(-1); return; }
     else if (a === "pgtab") { G.tab = v; }
@@ -1225,7 +1278,7 @@
       : '<div class="actions"><button class="btn sm pri" data-act="approve" data-id="' + ap.id + '">Approve</button><button class="btn sm" data-act="ask" data-id="' + ap.id + '">Ask for changes</button><button class="btn sm" data-act="decline" data-id="' + ap.id + '">Decline</button>' + (G.out && G.out.blocks ? '<button class="btn sm" type="button" data-pgprev>Preview the PDF</button>' : '') + '</div>');
     else if (st === "changes") h += '<span class="small">You asked for changes' + (ap.note ? ': “' + e(ap.note) + '”' : '') + '. Edit the details and generate it again.</span>';
     else if (st === "declined") h += '<span class="small">You declined this proposal, so no email will be made. Edit the details to start over.</span>';
-    else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook draft.</span>';
+    else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook or Gmail draft.</span>';
     return h + '</div>';
   }
   (function () {
@@ -1234,7 +1287,7 @@
       apItem = function (a) {
         var h = apItem0(a); if (!a.pg) return h;
         return h.replace("Pia's pre-send check", e(nameOf(a.who)) + "'s check").replace(/>Approve and send to 1</, ">Approve<")
-          .replace(/<button class="btn" data-act="test"[^>]*>[^<]*<\/button>/, "").replace(/>Send now</, ">Create the Outlook draft<")
+          .replace(/<button class="btn" data-act="test"[^>]*>[^<]*<\/button>/, "").replace(/>Send now</, ">Create the email draft<")
           .replace(/(<div class="actions"><button class="btn pri" data-act="(?:approve|sendnow)")/, (G.out && G.out.apId === a.id && G.out.blocks ? '<div class="actions" style="margin-bottom:6px"><button class="btn" type="button" data-pgprev>Preview the PDF</button></div>' : "") + "$1");
       };
     }
