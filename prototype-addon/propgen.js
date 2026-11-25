@@ -949,7 +949,8 @@
     }
     if (dr && dr.via === "gmail") h += '<div class="z1-box" role="status"><b>The email is in your Gmail Drafts, addressed to ' + e(o.to) + '.</b><span class="small">' + (dr.attached ? dr.attached + " of " + o.files.length + " files are already attached" + (dr.attached < o.files.length ? "; attach the rest from the saved files" : "") : "Attach the " + (o.files.length ? o.files.length + " saved files" : "files")) + (dr.sig ? ", and Karla\'s signature image is in place" : "") + '. Check it, then press Send in Gmail.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Gmail</a>' : '') + '</div>';
     else if (dr && dr.box && dr.box !== KARLA_BOX) h += '<div class="z1-box" role="alert"><b>Heads up: this draft is in ' + e(dr.box) + '\'s Outlook, not Karla\'s.</b><span class="small">Proposals go out from ' + KARLA_BOX + '. Before sending, set From to ' + KARLA_BOX + ' in Outlook (you need Send As on her mailbox), or reconnect Microsoft 365 in claude.ai as Karla so drafts land in her Outlook.</span></div>';
-    if (dr && dr.via !== "gmail") h += '<div class="z1-box" role="status"><b>The email is in ' + (dr.box === KARLA_BOX ? "Karla\'s Outlook Drafts (" + KARLA_BOX + ")" : "the Outlook Drafts") + ', addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + (function () { var n = o.files.filter(function (f) { return !linkOf(f); }).length, l = o.files.length - n; return (n ? ', attach the ' + n + ' saved file' + (n === 1 ? "" : "s") + ' (Save all files gives them as one zip)' : "") + (l ? ', the ' + l + ' linked file' + (l === 1 ? " is" : "s are") + ' already in the email as links' : ""); })() + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
+    if (dr && dr.flow) h += '<div class="z1-box" role="status"><b>Power Automate is saving the email in Karla\'s Outlook Drafts (' + KARLA_BOX + '), addressed to ' + e(o.to) + ', with all ' + dr.flowN + ' file' + (dr.flowN === 1 ? "" : "s") + ' attached.</b><span class="small">It shows up in Drafts within a minute or two. Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + ', check the attachments, then press Send in Outlook. If it isn\'t there after 5 minutes, check the flow\'s run history in Power Automate.</span><a class="btn sm pri" style="justify-self:start" href="https://outlook.office.com/mail/drafts" target="_blank" rel="noopener">Open Outlook Drafts</a></div>';
+    else if (dr && dr.via !== "gmail") h += (dr.obErr ? '<div class="z1-box" role="alert">' + e(dr.obErr) + ' Attach the files from Save all files.</div>' : '') + '<div class="z1-box" role="status"><b>The email is in ' + (dr.box === KARLA_BOX ? "Karla\'s Outlook Drafts (" + KARLA_BOX + ")" : "the Outlook Drafts") + ', addressed to ' + e(o.to) + '.</b><span class="small">Open it' + (o.kind !== "generic" ? ", insert Karla\'s signature image just above the line &quot;Please consider the environment&quot; (Insert > Signature)" : "") + (function () { var n = o.files.filter(function (f) { return !linkOf(f); }).length, l = o.files.length - n; return (n ? ', attach the ' + n + ' saved file' + (n === 1 ? "" : "s") + ' (Save all files gives them as one zip)' : "") + (l ? ', the ' + l + ' linked file' + (l === 1 ? " is" : "s are") + ' already in the email as links' : ""); })() + ', then press Send in Outlook.</span>' + (dr.link ? '<a class="btn sm pri" style="justify-self:start" href="' + e(dr.link) + '" target="_blank" rel="noopener">Open the draft in Outlook</a>' : '') + '</div>';
     if (G.mailErr) h += '<div class="z1-box" role="alert">' + G.mailErr + '</div>';
     h += '<div class="actions">' +
       (dr ? ghlLine() + '<button class="btn pri" data-pg="new">Start a new proposal</button>' : '<span class="small"><b>From ' + KARLA_BOX + '</b> (Outlook)</span>' +
@@ -1040,11 +1041,19 @@
       if (cc) input.cc = [cc];
       // Drafts land in the signed-in Microsoft 365 mailbox; note which one, so a draft outside Karla's is flagged.
       return mcp.callTool(MAIL_SERVER, "get_me", {}).then(function (r) { var me = (r && r.payload) || {}; box = String(me.mail || me.userPrincipalName || "").toLowerCase(); }, function () { box = ""; })
-        .then(function () { return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input); });
+        .then(function () {
+          // With the Power Automate flow switched on, the job goes to Karla's OneDrive Outbox and the flow makes the draft
+          // with every file attached. If handing it over fails, fall back to a draft without attachments.
+          if (!OB.on || (box && box !== KARLA_BOX)) return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input);
+          return outboxJob(mcp, o, cc).catch(function (err) {
+            OB.err = "The files couldn't be handed to Power Automate" + (err && err.code ? " (" + err.code + ")" : "") + ", so this draft has no attachments.";
+            return mcp.callTool(MAIL_SERVER, "outlook_create_draft", input);
+          });
+        });
     }).then(function (res) {
       var p = (res && res.payload) || {}, link = p.viewUrl || p.webLink || p.weblink || p.web_link || "";
       if (via === "gmail" && !link && p.id) link = "https://mail.google.com/mail/#drafts";
-      G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false, box: box };
+      G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false, box: box, flow: !!p.flow, flowN: p.flowN || 0, obErr: OB.err || "" }; OB.err = "";
       log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ }
       G.ghlInfo = ghlInfo(o); clearPersonal(); say("Draft ready in " + app); render(); ghlLog();
     }, function (err) {
@@ -1178,6 +1187,33 @@
         .then(function (blob) { return x[0].save({ filename: String(o.subject || "Proposal files").replace(/[\\/:*?"<>|]+/g, " ") + ".zip", data: blob }); })
         .then(function () { say(n + " file" + (n === 1 ? "" : "s") + " saved as one zip"); }, function (err) { if (err && err.code !== "dismissed" && err.code !== "declined") say("The zip file wasn't saved"); });
     }, function () { say("Saving as a zip file isn't available right now"); });
+  }
+  /* ---------- Attachments through Power Automate (Paolo, 2026-11-25: "automate the attachments") ----------
+     The Microsoft 365 connector can't attach files and uploads at most 1 MB per file. So the page hands the job to a
+     Power Automate flow in Karla's account: it uploads the client's proposal PDF in parts of under 1 MB, then a .job file
+     (to, cc, subject, body, part names, and which standard files to attach) into OneDrive Zero1Office/Outbox. The flow
+     rebuilds the PDF, takes the standard files from Zero1Office/Files, saves the Outlook draft with all of them attached,
+     and deletes the job. Switched on by the db doc meta/outbox {on, driveId, folderId} once the flow is set up. */
+  var OB = { on: false, driveId: "", folderId: "", err: "" };
+  (function () { var cl = window.claude; if (!cl || !cl.use) return; cl.use("db").then(function (db) { if (!db) return; try { db.doc("meta/outbox").onSnapshot(function (d) { var x = d && d.exists ? (typeof d.data === "function" ? d.data() : d.data) : null; OB.on = !!(x && x.on && x.driveId && x.folderId); OB.driveId = x && x.driveId || ""; OB.folderId = x && x.folderId || ""; }, function () { /* flow stays off */ }); } catch (err) { /* flow stays off */ } }, function () { /* flow stays off */ }); })();
+  var PART = 1048575; // a multiple of 3, so the parts' base64 joins into the whole file's base64
+  function srcName(f) { return String(f.repo || f.path || "").split("/").pop().replace(/\.b64\.txt$/, ""); }
+  function utf8b64(t) { var b = new TextEncoder().encode(t), s = ""; for (var i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return btoa(s); }
+  function outboxJob(mcp, o, cc) {
+    var gen = o.files.filter(function (f) { return f.gen; })[0], std = o.files.filter(function (f) { return !f.gen && !f.missing && srcName(f); });
+    var id = "z1-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7), parts = [];
+    function up(name, b64s) { return mcp.callTool(MAIL_SERVER, "sharepoint_upload_file", { driveId: OB.driveId, parentItemId: OB.folderId, filename: name, contentBase64: b64s, conflictBehavior: "replace" }); }
+    return (gen ? fileBlob(gen) : Promise.resolve(null)).then(function (pdf) {
+      var chain = Promise.resolve();
+      if (pdf) for (var at = 0, n = 1; at < pdf.size; at += PART, n++) (function (a, k) {
+        chain = chain.then(function () { return b64(pdf.slice(a, a + PART)); }).then(function (c) { var nm = id + ".part" + k; parts.push(nm); return up(nm, c); });
+      })(at, n);
+      return chain.then(function () {
+        var job = { v: 1, to: o.to, cc: cc || "", subject: o.subject, html: o.html, pdfName: gen ? gen.name : "", parts: parts,
+          files: std.map(function (f) { return { src: srcName(f), name: f.name }; }) };
+        return up(id + ".job", utf8b64(JSON.stringify(job)));
+      });
+    }).then(function () { return { payload: { flow: true, flowN: (gen ? 1 : 0) + std.length } }; });
   }
   function saveFile(i) {
     var f = i === -1 ? { path: SIG_IMG, name: "Karla Luansing - MAXICARE Email Signature.jpg", label: "Signature image" } : G.out && G.out.files[i]; if (!f) return;
