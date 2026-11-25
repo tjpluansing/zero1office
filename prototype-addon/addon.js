@@ -4,7 +4,7 @@
  *   1. Sign-in in front of the office (demo accounts, password "demo").
  *   2. A "Billing & SOA" page: the SOA collections tracker and provider payouts with Karla's receipts.
  *   3. Nina and Sol in the 3D office working from that tracker, plus "From your trackers" in the office panel.
- * Everything is sample data kept in this browser only.
+ * Billing data is kept in this browser only. It starts empty (no sample SOAs).
  */
 (function () {
   "use strict";
@@ -138,34 +138,19 @@
   }
   function commit(msg) { store(DATA_KEY, B); if (msg) say(msg); render(); pushLive(); }
 
-  function seed() {
-    B = { soas: [], events: [], payouts: [
-      { id: "d1", provider: "Maxicare", received_on: daysAgo(4), reference: "DV-24-1188", gross_amount: 23500, withholding_amount: 2350, net_amount: 21150, receipt_no: null, receipt_issued_on: null, notes: null },
-      { id: "d2", provider: "Intellicare", received_on: daysAgo(30), reference: "CV-0931", gross_amount: 8400, withholding_amount: 840, net_amount: 7560, receipt_no: "AK-0042", receipt_issued_on: daysAgo(28), notes: null },
-    ] };
-    var rows = [
-      { soa_no: "MX-2026-0412", provider: "Maxicare", account_name: "Dela Cruz Trading", product: "HMO – Corporate", amount: 185000, commission_rate: 0.1, released_on: daysAgo(70), due_on: daysAgo(40) },
-      { soa_no: "MC-88120", provider: "Medicard", account_name: "Santos Bakery", product: "HMO – SME", amount: 64000, commission_rate: 0.1, released_on: daysAgo(20), due_on: daysAgo(5) },
-      { soa_no: "IC-55102", provider: "Intellicare", account_name: "Bayani Logistics", product: "HMO – Corporate", amount: 120000, commission_rate: 0.08, released_on: daysAgo(12), due_on: daysAgo(-18) },
-      { soa_no: "MX-2026-0398", provider: "Maxicare", account_name: "Luzon Dental Group", product: "HMO – Corporate", amount: 96000, commission_rate: 0.1, released_on: daysAgo(50), due_on: daysAgo(20), paid_on: daysAgo(25), payment_ref: "BDO 22831", cwt_applicable: true, cwt_amount: 1920 },
-      { soa_no: "KHL-7781", provider: "KHL", account_name: "Mabuhay Prints", product: "HMO – SME", amount: 38000, commission_rate: 0.1, released_on: daysAgo(40), due_on: daysAgo(10), paid_on: daysAgo(12), provider_receipt_no: "OR 1123", provider_receipt_on: daysAgo(9) },
-      { soa_no: "MX-2026-0377", provider: "Maxicare", account_name: "Rizal Builders", product: "HMO – Corporate", amount: 150000, commission_rate: 0.1, released_on: daysAgo(60), due_on: daysAgo(30), paid_on: daysAgo(32), provider_receipt_no: "OR 88231", provider_receipt_on: daysAgo(28), cwt_applicable: true, cwt_amount: 3000, form_2307_on: daysAgo(20), disbursement_id: "d1", commission_amount: 15000 },
-      { soa_no: "MX-2026-0380", provider: "Maxicare", account_name: "Cebu Seafoods", product: "HMO – SME", amount: 85000, commission_rate: 0.1, released_on: daysAgo(58), due_on: daysAgo(28), paid_on: daysAgo(29), provider_receipt_no: "OR 88240", provider_receipt_on: daysAgo(26), disbursement_id: "d1", commission_amount: 8500 },
-      { soa_no: "IC-54990", provider: "Intellicare", account_name: "Tala Cafe", product: "HMO – SME", amount: 105000, commission_rate: 0.08, released_on: daysAgo(90), due_on: daysAgo(60), paid_on: daysAgo(62), provider_receipt_no: "OR 5521", provider_receipt_on: daysAgo(58), disbursement_id: "d2", commission_amount: 8400 },
-      { soa_no: "FWD-GL-301", provider: "FWD", account_name: "Ana Reyes", product: "Group Life", amount: 42000, commission_rate: 0.15 },
-    ];
-    rows.forEach(function (r, i) {
-      var s = Object.assign(blank(), r, { id: "s" + (i + 1) });
-      if (s.paid_on) s.paid_amount = s.amount;
-      s.commission_expected = Math.round(s.amount * s.commission_rate * 100) / 100; s.auto_comm = true;
-      s.stage = computeStage(s);
-      var last = [s.form_2307_on, s.provider_receipt_on, s.paid_on, s.released_on].filter(Boolean)[0];
-      s.stage_changed_at = s.disbursement_id ? new Date(payout(s.disbursement_id).received_on).toISOString() : last ? new Date(last).toISOString() : new Date(Date.now() - 5 * DAY).toISOString();
-      B.soas.push(s);
-      B.events.push({ id: "e" + (i + 1), soa_id: s.id, at: s.stage_changed_at, who: "Karla", kind: "stage", body: stageInfo(s.stage).label });
-    });
-    B.events.push({ id: "e100", soa_id: "s1", at: new Date(Date.now() - 50 * 3600000).toISOString(), who: "New Assistant", kind: "follow_up", body: "Emailed accounting, promised payment next week." });
-    return B;
+  // Paolo, 2026-11-25: "Remove all dummy data". The tracker starts empty; old sample SOAs and payouts are removed
+  // from saved data (matched on id and number together), and anything Paolo or Karla added is kept.
+  function seed() { return { soas: [], events: [], payouts: [] }; }
+  var SAMPLE_SOA = { s1: "MX-2026-0412", s2: "MC-88120", s3: "IC-55102", s4: "MX-2026-0398", s5: "KHL-7781", s6: "MX-2026-0377", s7: "MX-2026-0380", s8: "IC-54990", s9: "FWD-GL-301" };
+  var SAMPLE_PAY = { d1: "DV-24-1188", d2: "CV-0931" };
+  if (!B.noDummy) {
+    B.soas = B.soas.filter(function (x) { return SAMPLE_SOA[x.id] !== x.soa_no; });
+    B.payouts = B.payouts.filter(function (x) { return SAMPLE_PAY[x.id] !== x.reference; });
+    var keepS = {}; B.soas.forEach(function (x) { keepS[x.id] = 1; });
+    var keepP = {}; B.payouts.forEach(function (x) { keepP[x.id] = 1; });
+    B.soas.forEach(function (x) { if (x.disbursement_id && !keepP[x.disbursement_id]) { x.disbursement_id = null; x.stage = computeStage(x); } });
+    B.events = (B.events || []).filter(function (x) { return keepS[x.soa_id]; });
+    B.noDummy = true; store(DATA_KEY, B);
   }
 
   /* ---------- page state ---------- */
@@ -183,7 +168,7 @@
     } else if (can("billing.create")) btns += '<button class="btn sm pri" data-z1="newpayout">Record payout</button>';
     var tabs = '<div class="chips"><button class="chip" data-z1="tab" data-v="soas" aria-pressed="' + (Z.tab === "soas") + '">SOAs (' + B.soas.length + ')</button>' +
       '<button class="chip" data-z1="tab" data-v="payouts" aria-pressed="' + (Z.tab === "payouts") + '">Payouts and Karla\'s receipts (' + B.payouts.length + ')</button></div>';
-    return '<div class="ph"><div><h2>Billing & SOA</h2><p>Every SOA from release to client payment, provider receipt, 2307, commission and Karla\'s receipt. Sample data, kept in this browser.</p></div><div class="actions">' + btns + '</div></div>' +
+    return '<div class="ph"><div><h2>Billing & SOA</h2><p>Every SOA from release to client payment, provider receipt, 2307, commission and Karla\'s receipt. Kept in this browser.</p></div><div class="actions">' + btns + '</div></div>' +
       tabs + (Z.tab === "soas" ? soaList() : payoutList());
   }
 

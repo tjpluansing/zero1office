@@ -68,7 +68,7 @@
     var rec = S.data.clientRec;
     var recCard = '<div class="card pad" style="background:var(--gold-soft);border-color:transparent;display:grid;gap:6px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>Recommendation from ' + e(nameOf("owen")) + " · Renewals</b>" + apState(rec === "approved" ? "approved" : rec) + '</div><p class="small">Seaside Family Clinic renews in 3 days and hasn\'t confirmed. Send the renewal offer today with Quinn\'s re-benchmark (Essential stays the best fit, +3% premium), and ask Dom to book a 10-minute call.</p>' +
       (rec === "waiting" || rec === "changes" ? '<div class="actions"><button class="btn pri sm" data-act="rec" data-v="approved">Approve</button><button class="btn sm" data-act="rec" data-v="changes">Ask for changes</button><button class="btn sm" data-act="rec" data-v="declined">Decline</button></div><p class="muted" style="font-size:11px">Approving gives Owen the go-ahead. Nothing is sent to the client from this page.</p>' : '<div><button class="btn sm" data-act="rec" data-v="waiting">Undo</button></div>') + "</div>";
-    return '<div class="ph"><div><h2>Client stats</h2><p>Every account you handle, by account type, product and company. Pick a period to see premiums for the whole year, each half, each quarter or each month. Sample accounts.</p></div><button class="btn sm" data-go="office">Back to the office</button></div>' +
+    return '<div class="ph"><div><h2>Client stats</h2><p>Every account you handle, by account type, product and company. Pick a period to see premiums for the whole year, each half, each quarter or each month.</p></div><button class="btn sm" data-go="office">Back to the office</button></div>' +
       '<h3 class="secth">Overall · ' + e(P.n) + "</h3>" + hero +
       '<div class="tiles"><div class="tile"><span class="k">Accounts</span><span class="v">' + C.length + '</span><span class="h">' + (filtered ? "matching your filter" : "all products") + '</span></div><div class="tile"><span class="k">Lives covered</span><span class="v">' + mem.toLocaleString() + '</span><span class="h">members and insureds</span></div><div class="tile"><span class="k">Premium ' + P.each + '</span><span class="v">' + per(prem) + '</span><span class="h">' + (pk === "year" ? "in force" : peso(prem) + " a year ÷ " + P.d) + '</span></div><div class="tile"><span class="k">Renewing in ' + (pk === "year" ? "12 months" : pk === "half" ? "6 months" : pk === "quarter" ? "3 months" : "30 days") + '</span><span class="v">' + ren.length + '</span><span class="h">' + peso(sum(ren, "prem")) + ' a year at stake</span></div><div class="tile"><span class="k">HMO benefit used</span><span class="v">' + avgUse + '%</span><span class="h">' + hi + " with high use</span></div></div>" +
       '<div class="mixgrid">' + mix("By account type", "type", ACC_TYPES) + mix("By product", "prod", PRODUCTS) + mix("By company", "co", PROVIDERS.map(function (p) { return p[0]; })) + "</div>" + renCard +
@@ -77,7 +77,7 @@
       '<div class="clsel"><div class="small muted" style="display:grid;gap:3px">Group by<div class="seg" role="group" aria-label="Group by">' + [["type", "Account type"], ["prod", "Product"], ["co", "Company"]].map(function (g) { return '<button data-act="clgroup" data-v="' + g[0] + '" aria-pressed="' + (grp === g[0]) + '">' + g[1] + "</button>"; }).join("") + "</div></div>" +
       '<label class="small muted" style="display:grid;gap:3px">Sort by<select class="inp" id="clSort">' + [["prem", "Premium, highest first"], ["ren", "Renewal date, soonest first"], ["m", "Lives, most first"], ["n", "Name, A to Z"]].map(function (o) { return '<option value="' + o[0] + '"' + (sort === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></label>" +
       (filtered ? '<button class="btn sm" data-act="clclear" style="align-self:end">Clear filters</button>' : "") + "</div></div>" +
-      '<div class="stack">' + (groups || '<div class="card pad empty">No accounts match these filters.</div>') + "</div>";
+      '<div class="stack">' + (groups || '<div class="card pad empty">' + (ALL.length ? "No accounts match these filters." : "No accounts yet. They show here as you add clients.") + '</div>') + "</div>";
   }
   if (VIEWS.clients) VIEWS.clients = vClientsX;
 
@@ -169,22 +169,11 @@
     save(); closeModals(); render(); say("Event updated.");
   }, true);
 
-  /* ---------- Reports > Ads (Paolo, 2026-11-25): paid ads run by Mateo, sample numbers ---------- */
-  var ADS = {
-    platforms: [["Facebook & Instagram", 26400, 412000, 6950, 131, 3, "#1E5190"], ["Google Search", 15800, 58000, 2430, 66, 2, "#D3A13B"], ["TikTok", 6300, 188000, 3010, 17, 0, "#10B981"]],
-    // name, platform, status, spend, clicks, leads, won
-    campaigns: [
-      ["Free Financial Wellness webinar", "Facebook & Instagram", "Active", 11200, 3180, 74, 1],
-      ["MyMaxicare Individual & Family plans", "Facebook & Instagram", "Active", 9800, 2470, 41, 2],
-      ["HMO for small businesses (SME)", "Google Search", "Active", 10400, 1520, 39, 2],
-      ["Maxicare plans near me", "Google Search", "Active", 5400, 910, 27, 0],
-      ["Retargeting: site visitors", "Facebook & Instagram", "Paused", 5400, 1300, 16, 0],
-      ["60-second HMO explainer reels", "TikTok", "Waiting for your OK", 6300, 3010, 17, 0],
-    ],
-    months: [["Jun", 31000, 118], ["Jul", 34500, 141], ["Aug", 36800, 150], ["Sep", 41200, 176], ["Oct", 44900, 198], ["Nov", 48500, 214]],
-    premiumWon: 486000, calls: 19,
-  };
+  /* ---------- Reports > Ads (Paolo, 2026-11-25): paid ads run by Mateo, empty until an ads account is connected ---------- */
+  // Paolo, 2026-11-25: "Remove all dummy data". The sample ad numbers are gone; real numbers come once an ads account is connected.
+  var ADS = null;
   function vAds() {
+    if (!ADS) { var m0 = byId("mateo"); return '<div class="card pad empty" style="display:grid;gap:6px;justify-items:center;text-align:center">' + (m0 ? av(m0) : "") + '<h3 style="margin:0">No ad numbers yet</h3><p class="muted small" style="margin:0;max-width:460px">Spend, leads and campaigns show here once a Facebook, Google or TikTok ads account is connected. Nothing here is sample data.</p></div>'; }
     var m = byId("mateo"), P = ADS.platforms, C = ADS.campaigns;
     var spend = P.reduce(function (a, x) { return a + x[1]; }, 0), leads = P.reduce(function (a, x) { return a + x[4]; }, 0), won = P.reduce(function (a, x) { return a + x[5]; }, 0);
     var reach = P.reduce(function (a, x) { return a + x[2]; }, 0), clicks = P.reduce(function (a, x) { return a + x[3]; }, 0);
