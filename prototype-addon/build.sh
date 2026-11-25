@@ -11,4 +11,5 @@ cp "$1" "$2"
   printf '<script>\n'; cat "$D/propgen.js"; printf '</script>\n'
   printf '<script>\n'; cat "$D/extras.js"; printf '</script>\n'
   printf "<script>\n"; cat "$D/files.js"; printf "</script>\n"
+  printf "<script>\n"; cat "$D/chatplus.js"; printf "</script>\n"
 } >> "$2"

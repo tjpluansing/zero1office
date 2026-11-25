@@ -72,7 +72,7 @@
     return fetch(src).then(function (r) { if (!r.ok) throw new Error("missing"); return wrapped ? r.text() : r.blob(); })
       .then(function (x) { return wrapped ? b64ToBlob(x, mimeOf(f)) : x; });
   }
-  window.Z1Files = { blob: blobOf, forSlot: bySlot };
+  window.Z1Files = { blob: blobOf, forSlot: bySlot }; // upload, view and chatFolder are added below (v77)
 
   /* ---------- connect to the artifact's storage ---------- */
   // Reads are hardened (v71): any snapshot shape, errors shown on the page, and a one-off read as a fallback.
@@ -114,21 +114,25 @@
   function rer() { if (S.view === "files") render(); }
 
   /* ---------- upload ---------- */
-  function upload(list) {
-    if (!F.assets || !F.db) { say("Uploading works when the page is opened on claude.ai by its owner or an editor"); return; }
-    var folder = F.folder || "";
+  // opts (v77, chat attachments): { folder, note, done(row), failed(message) }
+  function upload(list, opts) {
+    opts = opts || {};
+    if (!F.assets || !F.db) { say("Uploading works when the page is opened on claude.ai by its owner or an editor"); if (opts.failed) opts.failed("not available"); return; }
+    var folder = opts.folder != null ? opts.folder : F.folder || "";
     Array.prototype.forEach.call(list, function (file) {
       var ext = extOf(file.name), job = { name: file.name, state: "Uploading…" }; F.up.push(job);
-      var fail = function (m) { job.state = m; job.bad = true; rer(); setTimeout(function () { F.up = F.up.filter(function (j) { return j !== job; }); rer(); }, 6000); };
+      var fail = function (m) { if (opts.failed) opts.failed(m, file); job.state = m; job.bad = true; rer(); setTimeout(function () { F.up = F.up.filter(function (j) { return j !== job; }); rer(); }, 6000); };
       if (!ext || BLOCKED.indexOf(ext) > -1) { fail("This type of file can't be stored here"); return; }
       var native = NATIVE[ext], max = native ? (ext === "svg" ? 2 * MB : 20 * MB) : 15 * MB;
       if (file.size > max) { fail("Too big: the limit is " + Math.round(max / MB) + " MB for this type"); return; }
       var body = native ? Promise.resolve(file) : file.arrayBuffer().then(function (b) { return new Blob([bufToB64(b)], { type: "text/plain" }); });
       body.then(function (blob) { return F.assets.upload(blob, { type: native || "text/plain" }); })
         .then(function (r) {
-          var row = { name: file.name.slice(0, 180), folder: folder, size: file.size, mime: native || WRAPPED[ext] || "application/octet-stream", asset: r.id, wrap: !native, slot: "", note: "", at: new Date().toISOString(), by: who() };
+          var row = { name: file.name.slice(0, 180), folder: folder, size: file.size, mime: native || WRAPPED[ext] || "application/octet-stream", asset: r.id, wrap: !native, slot: "", note: String(opts.note || "").slice(0, 200), at: new Date().toISOString(), by: who() };
           return F.db.collection("files").add(row).then(function (ref) {
-            if (!F.docs.some(function (d) { return d.asset === row.asset; })) { var o = {}; for (var k in row) o[k] = row[k]; o.id = ref && ref.id; o.ext = extOf(o.name); if (o.id) F.docs = F.docs.concat([o]); }
+            var o = {}; for (var k in row) o[k] = row[k]; o.id = ref && ref.id; o.ext = extOf(o.name);
+            if (o.id && !F.docs.some(function (d) { return d.asset === row.asset; })) F.docs = F.docs.concat([o]);
+            if (opts.done) opts.done(o);
           });
         })
         .then(function () { F.up = F.up.filter(function (j) { return j !== job; }); say(file.name + " uploaded"); meter(); rer(); setTimeout(refresh, 1500); },
@@ -548,4 +552,13 @@
   })();
   VIEWS.files = vFiles;
   if (S.view === "files") render(); else if (typeof renderNav === "function") renderNav();
+  // For the chat box (v77): give files to the AI employees. They land in a "Chat files" folder here.
+  window.Z1Files.upload = upload;
+  window.Z1Files.view = function (id) { viewFile(id); };
+  window.Z1Files.ready = function () { return !!(F.assets && F.db); };
+  window.Z1Files.chatFolder = function () {
+    var list = folders(), hit = list.filter(function (x) { return x.name === "Chat files" && !fById(x.parent); })[0];
+    if (hit) return hit.id;
+    var id = "chat-files"; saveFolders(list.concat([{ id: id, name: "Chat files", parent: "" }])); return id;
+  };
 })();
