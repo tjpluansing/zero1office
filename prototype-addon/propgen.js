@@ -897,7 +897,9 @@
   function approvalBox(ap) {
     if (!ap) return "";
     var st = ap.state, h = '<div class="z1-box" role="status"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Your approval</b><span class="sp" style="flex:1"></span>' + apState(st) + '</div>';
-    if (st === "waiting") h += '<span class="small">The proposal is in Approvals. Once you approve it there, you can create the Outlook draft here.</span><div class="actions"><button class="btn sm pri" data-go="approvals">Open approvals</button><button class="btn sm" type="button" data-pgprev>Preview the PDF</button></div>';
+    if (st === "waiting") h += '<span class="small">Check the PDF, then approve it here or in Approvals. Once it\'s approved you can create the Outlook draft.</span>' + (S.askFor === ap.id
+      ? '<form data-form="ask" data-id="' + ap.id + '" class="stack" style="gap:6px"><label class="lbl" for="askText">What should ' + e(nameOf(ap.who)) + ' change?</label><textarea class="inp" id="askText" rows="3" placeholder="e.g. Add the dental rider and use the Gold plan"></textarea><div class="actions"><button class="btn pri sm" type="submit">Send back</button><button class="btn sm" type="button" data-act="askcancel">Cancel</button></div></form>'
+      : '<div class="actions"><button class="btn sm pri" data-act="approve" data-id="' + ap.id + '">Approve</button><button class="btn sm" data-act="ask" data-id="' + ap.id + '">Ask for changes</button><button class="btn sm" data-act="decline" data-id="' + ap.id + '">Decline</button><button class="btn sm" type="button" data-pgprev>Preview the PDF</button></div>');
     else if (st === "changes") h += '<span class="small">You asked for changes' + (ap.note ? ': “' + e(ap.note) + '”' : '') + '. Edit the details and generate it again.</span>';
     else if (st === "declined") h += '<span class="small">You declined this proposal, so no email will be made. Edit the details to start over.</span>';
     else if (st === "approved") h += '<span class="small">' + e(ap.when) + '. Save the files, then create the Outlook draft.</span>';
