@@ -187,6 +187,7 @@
     }
     h += '</div>';
     var k = formKind();
+    if (k === "mxi" || k === "mxf") h += tplCard();
     if (k) h += G.out ? preview() : form(k);
     h += history();
     return h;
@@ -541,7 +542,40 @@
     "<p>Please consider the environment before you print this email</p>" +
     "<p>Disclaimer: The information contained in this communication is intended solely for the use of the individual or entity to whom it is addressed and others authorized to receive it. It may contain confidential or legally privileged information. If you are not the intended recipient you are hereby notified that any disclosure, copying, distribution, or taking any action in reliance on the contents of this information is strictly prohibited and may be unlawful. If you have erroneously received this communication, please notify us immediately by responding to this email and then delete it from your system. Maxicare is neither liable for the improper and incomplete transmission of the information contained in this communication nor for any delay in its receipt.</p>";
   // Paolo, 2026-11-25: always greet the client by name instead of "Sir/Madam".
-  function mxTemplate(name) { return "<p>Hi " + e(name) + ",</p>" + MX_BODY; }
+  // Paolo, 2026-11-25: "Make the email template editable". The edited body is kept in this browser; it holds no client details.
+  var TPL_KEY = "zero1office:mxtemplate:v1";
+  function tplSaved() { var t = store(TPL_KEY); return t && typeof t.html === "string" && t.html.trim() ? t : null; }
+  function mxBody() { var t = tplSaved(); return t ? t.html : MX_BODY; }
+  function mxTemplate(name) { return "<p>Hi " + e(name) + ",</p>" + mxBody(); }
+  var TPL_TAGS = { P: 1, BR: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, A: 1 };
+  function cleanTpl(html) { // keep simple formatting and safe links only
+    var box = document.createElement("div"); box.innerHTML = html;
+    (function walk(el) {
+      [].slice.call(el.childNodes).forEach(function (n) {
+        if (n.nodeType === 3) return;
+        if (n.nodeType !== 1) { n.remove(); return; }
+        walk(n);
+        var tag = n.tagName === "DIV" ? "P" : n.tagName;
+        if (!TPL_TAGS[tag]) { if (/^(SCRIPT|STYLE|IFRAME|OBJECT|IMG|SVG)$/.test(n.tagName)) n.remove(); else { while (n.firstChild) n.parentNode.insertBefore(n.firstChild, n); n.remove(); } return; }
+        var href = tag === "A" ? n.getAttribute("href") || "" : "";
+        var m = document.createElement(tag); while (n.firstChild) m.appendChild(n.firstChild);
+        if (tag === "A" && /^(https:\/\/|mailto:)/i.test(href)) m.setAttribute("href", href);
+        n.parentNode.replaceChild(m, n);
+      });
+    })(box);
+    return box.innerHTML.replace(/<p><\/p>/g, "").trim();
+  }
+  function tplCard() {
+    var t = tplSaved();
+    if (!G.tplEdit) return '<div class="card pad" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>Email template</b><div class="muted small">' + (t ? "Using your edited template, saved " + e(new Date(t.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + "." : "Using Karla's original Individual and Family template.") + '</div></div><button class="btn sm" data-pg="tpledit">Edit email template</button></div>';
+    var tb = [["bold", "<b>B</b>", "Bold"], ["italic", "<i>I</i>", "Italic"], ["underline", "<u>U</u>", "Underline"], ["insertUnorderedList", "• List", "Bullet list"]];
+    return '<div class="card pad stack"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><h3>Edit email template</h3><span class="muted small">Maxicare Individual and Family</span></div>' +
+      '<p class="muted small" style="margin:0">Type straight into the email. "Hi" and the client\'s name are added on top for each client, so leave names and other client details out. Keep the line "Please consider the environment…": Karla\'s signature image goes just above it.</p>' +
+      '<div class="actions" role="toolbar" aria-label="Formatting">' + tb.map(function (b) { return '<button class="btn sm" type="button" data-pgcmd="' + b[0] + '" title="' + b[2] + '" aria-label="' + b[2] + '">' + b[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="z1-box pg-mail" style="background:var(--surface);max-height:none"><p class="muted" style="margin:0 0 6px"><i>Hi &lt;client name&gt;,</i></p><div id="pgTplEd" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Email template" style="outline:none;min-height:240px">' + (G.tplDraft != null ? G.tplDraft : mxBody()) + "</div></div>" +
+      '<div class="actions"><button class="btn pri" data-pg="tplsave">Save template</button><button class="btn" data-pg="tplcancel">Cancel</button>' + (t ? '<button class="btn" data-pg="tplreset">Go back to Karla\'s original</button>' : "") + "</div>" +
+      (G.out ? '<p class="muted small" style="margin:0">The email already generated below keeps the old text. Edit the details and generate it again to use the new template.</p>' : "") + "</div>";
+  }
   var MX_BODY = "<p>Good day!</p>" +
     "<p>For your perusal and consideration, I am pleased to present our proposal for an Individual or Family plan.</p>" +
     "<p>We offer several options with a Maximum Benefit Limit (MBL) of ₱100k, ₱150k, ₱200k, and ₱250k.</p>" +
@@ -624,7 +658,9 @@
     } else if (o.co === "Maxicare") add(o.kind !== "generic" ? "fail" : "warn", "No location given, so I can't list the nearest Primary Care Clinics, hospitals, clinics, physicians and dental clinics. Add the client's region and city.");
     if (o.kind !== "generic") {
       var tOk = o.email === mxTemplate(c.name);
-      add(tOk ? "ok" : "fail", tOk ? "Email uses Karla's Individual and Family template word for word, greets " + c.name + " by name, and has her signature and disclaimer." : "Email doesn't match Karla's Individual and Family template.");
+      var own = !!tplSaved(), tName = own ? "your edited Individual and Family template" : "Karla's Individual and Family template";
+      add(tOk ? "ok" : "fail", tOk ? "Email uses " + tName + " word for word and greets " + c.name + " by name." : "Email doesn't match " + tName + ".");
+      if (own) add(/Please consider the environment/.test(o.email) ? "ok" : "warn", /Please consider the environment/.test(o.email) ? "The edited template keeps the line where Karla's signature image goes." : "The edited template dropped \"Please consider the environment…\", so there's no marked spot for Karla's signature image.");
     } else {
       var gOk = o.email.indexOf(e(c.name)) > -1 && o.email.indexOf("Karla") > -1 && o.files.every(function (f) { return o.email.indexOf(e(f.label)) > -1; });
       add(gOk ? "ok" : "fail", gOk ? "Email has the client's name, Karla's signature" + (o.files.length ? " and the list of attached files." : ".") : "Email is missing the client's name, the signature or the list of files.");
@@ -851,6 +887,16 @@
 
   /* ---------- events ---------- */
   var app = document.getElementById("app");
+  app.addEventListener("mousedown", function (ev) { if (ev.target.closest && ev.target.closest("[data-pgcmd]")) ev.preventDefault(); }, true);
+  app.addEventListener("click", function (ev) {
+    var b = ev.target.closest && ev.target.closest("[data-pgcmd]"); if (!b) return;
+    ev.stopPropagation(); ev.preventDefault();
+    var ed = document.getElementById("pgTplEd"); if (!ed) return; ed.focus();
+    var cmd = b.getAttribute("data-pgcmd");
+    try { document.execCommand(cmd, false, null); } catch (err) { /* older browsers */ }
+    G.tplDraft = ed.innerHTML;
+  }, true);
+  app.addEventListener("input", function (ev) { if (ev.target && ev.target.id === "pgTplEd") G.tplDraft = ev.target.innerHTML; }, true);
   app.addEventListener("click", function (ev) {
     var t = ev.target.closest && ev.target.closest("[data-pg]"); if (!t) return;
     ev.stopPropagation(); ev.preventDefault();
@@ -866,6 +912,15 @@
     else if (a === "save") { saveFile(Number(v)); return; }
     else if (a === "savesig") { saveFile(-1); return; }
     else if (a === "pgtab") { G.tab = v; }
+    else if (a === "tpledit") { G.tplEdit = true; G.tplDraft = null; }
+    else if (a === "tplcancel") { G.tplEdit = false; G.tplDraft = null; }
+    else if (a === "tplsave") {
+      var ed = document.getElementById("pgTplEd"), html = ed ? cleanTpl(ed.innerHTML) : "";
+      if (!html.replace(/<[^>]+>/g, "").trim()) { say("The template can't be empty"); return; }
+      if (html === MX_BODY) store(TPL_KEY, null); else store(TPL_KEY, { html: html, at: new Date().toISOString() });
+      G.tplEdit = false; G.tplDraft = null; say("Email template saved. New proposals use it.");
+    }
+    else if (a === "tplreset") { store(TPL_KEY, null); G.tplEdit = false; G.tplDraft = null; say("Back to Karla's original template"); }
     else if (a === "copy") { copyMail(); return; }
     render();
     if (a === "type" || a === "co") { var f = document.querySelector("[data-pgform] input"); if (f && a === "type") f.focus(); }
