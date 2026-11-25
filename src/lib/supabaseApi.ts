@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
-import type { IntegrationRow, SyncLog, TestResult } from "./types";
+import type { IntegrationAlert, IntegrationRow, SyncLog, TestResult } from "./types";
 import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -126,6 +126,9 @@ export function createSupabaseApi(): Api {
     },
     async retryEvent(eventId) {
       must(await sb.rpc("integration_retry_event", { p_event: eventId }));
+    },
+    async getIntegrationAlerts() {
+      return must(await sb.rpc("integration_alerts")) as IntegrationAlert[];
     },
 
     async getCatalog(): Promise<Catalog> {

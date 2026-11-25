@@ -309,4 +309,29 @@ select ghl_ingest_event('wh-9', '{"type":"ContactCreate","locationId":"loc123","
 select pg_temp.check((select (process_integration_events()->>'paused')::boolean and
   (select status = 'pending' from integration_events where event_id = 'wh-9')), 'pausing GHL holds events in the queue');
 
+
+-- ---------- Integration alerts ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select integration_save('m365', format('{"tenant_id":"t","client_id":"c","secret_expires_on":"%s"}', current_date + 10)::jsonb,
+                        'm365-secret-value-0000', true);
+create temp table a as select integration_alerts() v;
+select pg_temp.check((select v @> '[{"alert_key":"sync_failed:ghl","severity":"red"}]' from a), 'failed GHL updates raise an alert');
+select pg_temp.check((select v @> '[{"alert_key":"expiry:m365","severity":"amber"}]' from a), 'a Microsoft secret close to expiry raises an alert');
+select pg_temp.check((select not v @> '[{"alert_key":"key_age:ghl"}]' from a), 'a fresh key raises no age alert');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.check((select integration_alerts() = '[]'::jsonb), 'non-admins get no integration alerts');
+select pg_temp.expect_error($$select integration_alerts_to_notify()$$, 'permission denied');
+reset role;
+update integrations set secret_set_at = now() - interval '100 days' where id = 'ghl';
+create temp table n1 as select integration_alerts_to_notify() v;
+select pg_temp.check((select v->'alerts' @> '[{"alert_key":"key_age:ghl"}]' and v->'recipients' ? 'paolo@ask-karla.com' from n1),
+  'the health check emails alerts to the Super Admins');
+select pg_temp.check((select jsonb_array_length(integration_alerts_to_notify()->'alerts') = 0), 'the same alert is not emailed twice in a day');
+update integrations set secret_set_at = now() where id = 'ghl';
+select integration_alerts_to_notify();
+select pg_temp.check((select resolved_at is not null from integration_alert_state where alert_key = 'key_age:ghl'), 'fixed problems are marked resolved');
+update integrations set secret_set_at = now() - interval '100 days' where id = 'ghl';
+select pg_temp.check((select integration_alerts_to_notify()->'alerts' @> '[{"alert_key":"key_age:ghl"}]'), 'a problem that comes back is emailed again');
+
 \echo ALL RBAC TESTS PASSED

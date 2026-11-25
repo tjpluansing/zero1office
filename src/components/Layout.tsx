@@ -1,8 +1,9 @@
-import { KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
-import { useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { AlertTriangle, KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { isDemo } from "../lib/api";
+import { api, isDemo } from "../lib/api";
+import type { IntegrationAlert } from "../lib/types";
 import { NAV } from "../lib/nav";
 import { cx } from "./ui";
 
@@ -18,6 +19,14 @@ export function Logo({ light }: { light?: boolean }) {
 export default function Layout() {
   const { access, can, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [alerts, setAlerts] = useState<IntegrationAlert[]>([]);
+  const { pathname } = useLocation();
+  const seesIntegrations = can("integrations.view");
+  // Re-check on every page change so a fixed problem disappears quickly.
+  useEffect(() => {
+    if (!seesIntegrations) { setAlerts([]); return; }
+    api.getIntegrationAlerts().then(setAlerts).catch(() => setAlerts([]));
+  }, [seesIntegrations, pathname]);
   // Only pages the user may open are rendered. Route guards and the
   // database block the rest even if someone types the URL.
   const items = NAV.filter((n) => can(n.permission));
@@ -99,6 +108,14 @@ export default function Layout() {
             <Link to={access.mfa_enrolled ? "/verify-code" : "/security"} className="font-semibold underline">
               {access.mfa_enrolled ? "Verify now" : "Set it up"}
             </Link>
+          </div>
+        )}
+        {alerts.length > 0 && pathname !== "/admin/integrations" && (
+          <div className={cx("flex flex-wrap items-center justify-center gap-2 px-4 py-2 text-center text-sm",
+            alerts.some((a) => a.severity === "red") ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900")}>
+            <AlertTriangle className="h-4 w-4" />
+            {alerts[0].title}{alerts.length > 1 && ` (and ${alerts.length - 1} more)`}
+            <Link to="/admin/integrations" className="font-semibold underline">Review</Link>
           </div>
         )}
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8">

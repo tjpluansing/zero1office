@@ -133,6 +133,14 @@ export interface IntegrationRun {
   failed: number;
 }
 
+export interface IntegrationAlert {
+  alert_key: string;
+  integration_id: IntegrationId;
+  severity: "red" | "amber";
+  title: string;
+  detail: string;
+}
+
 export interface SyncLog {
   events: IntegrationEvent[];
   runs: IntegrationRun[];
