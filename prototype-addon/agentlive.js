@@ -148,4 +148,19 @@
     var items = due.length ? [{ who: "owen", title: plural(due.length, "renewal") + " within 60 days", tone: late.length ? "need" : "info", badge: late.length ? late.length + " overdue" : "Renewals", sub: due.slice(0, 2).map(function (r) { return r.acct + " " + when(r); }).join(", "), path: "view:renewals" }] : [];
     return { agents: { owen: owen }, items: items };
   });
+  /* ---- Enzo, Licensing & Training: Settings > Licenses, starting 90 days before each expiry ---- */
+  list.push(function () {
+    var L = window.Z1Licenses; if (!L) return {};
+    var due = L.open().filter(function (r) { return L.daysTo(r.date) <= 90; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+    var all = (S.data.licenses || []).length, late = due.filter(function (r) { return L.daysTo(r.date) < 0; });
+    var when = function (r) { var n = L.daysTo(r.date); return n < 0 ? "expired " + (-n) + " d ago" : n === 0 ? "expires today" : "expires in " + n + " d"; };
+    var enzo = {
+      now: due.length ? "Renewing " + due[0].acct + " (" + when(due[0]) + ")" : all ? "No license expires within 90 days" : "Waiting for licenses in Settings > Licenses",
+      say: late.length ? plural(late.length, "license") + " expired." : undefined,
+      tasks: due.slice(0, 6).map(function (r) { return "Renew " + r.acct + (r.ins ? " with " + r.ins : "") + " (" + when(r) + ")"; }),
+      k: "Licenses current", kc: all - due.length, kg: Math.max(1, all),
+    };
+    var items = due.length ? [{ who: "enzo", title: plural(due.length, "license") + " to renew", tone: late.length ? "need" : "info", badge: late.length ? late.length + " expired" : "Licenses", sub: due.slice(0, 2).map(function (r) { return r.acct + ", " + when(r); }).join("; "), path: "view:licenses" }] : [];
+    return { agents: { enzo: enzo }, items: items };
+  });
 })();
