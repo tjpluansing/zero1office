@@ -254,6 +254,48 @@
   list.push(convAgent("lia", false, "message", "inbox"));
   list.push(convAgent("bea", true, "DM", "inbox"));
 
+  /* ---- Fiona, CFO: subscriptions due in the next 7 days and this month's spending ---- */
+  list.push(function () {
+    var pad = function (n) { return String(n).padStart(2, "0"); }, d0 = new Date(), d7 = new Date(d0.getTime() + 7 * 864e5);
+    var t0 = d0.getFullYear() + "-" + pad(d0.getMonth() + 1) + "-" + pad(d0.getDate()), t7 = d7.getFullYear() + "-" + pad(d7.getMonth() + 1) + "-" + pad(d7.getDate()), mk = t0.slice(0, 7);
+    var subs = (S.data.subs || []).filter(function (x) { return x.on !== false && x.next && x.next <= t7; }).sort(function (a, b) { return a.next.localeCompare(b.next); });
+    var spent = (S.data.expenses || []).filter(function (x) { return String(x.date).slice(0, 7) === mk; }).reduce(function (t, x) { return t + (Number(x.amt) || 0); }, 0);
+    var due = subs.reduce(function (t, x) { return t + (Number(x.cost) || 0); }, 0);
+    var fiona = {
+      now: subs.length ? "Lining up " + plural(subs.length, "payment") + " due this week (" + peso(due) + ")" : spent ? "Tracking " + peso(spent) + " spent this month" : "No payments due this week",
+      tasks: subs.slice(0, 6).map(function (x) { return (x.next < t0 ? "Overdue: pay " : "Pay ") + x.n + " (" + peso(x.cost) + ", due " + x.next + ")"; }),
+      k: "Spent this month", kc: Math.round(spent), kg: Math.max(1, Math.round(spent + due)),
+    };
+    var late = subs.filter(function (x) { return x.next < t0; });
+    var items = subs.length ? [{ who: "fiona", title: plural(subs.length, "subscription") + " due this week", tone: late.length ? "need" : "info", badge: peso(due), sub: subs.slice(0, 2).map(function (x) { return x.n + " " + x.next; }).join(", "), path: "view:spend:subs" }] : [];
+    return { agents: { fiona: fiona }, items: items };
+  });
+
+  /* ---- Marco, Chief Sales Officer: open GoHighLevel opportunities, oldest first (read-only, every 15 minutes) ---- */
+  var O = { list: null, at: 0, busy: false };
+  list.push(function () {
+    var cl = window.claude;
+    if (!O.busy && Date.now() - O.at > 15 * 60000 && cl && cl.use) {
+      O.busy = true;
+      cl.use("mcp").then(function (m) {
+        if (!m) throw { code: "unavailable_here" };
+        return m.callTool("GHL", "execute_operation", { operationId: "search-opportunity", reason: "Marco reviews the open pipeline", params: { query: { limit: 50, status: "open" } } });
+      }).then(function (r) { O.busy = false; O.at = Date.now(); O.list = ghlData(r).opportunities || []; }, function () { O.busy = false; O.at = Date.now(); });
+    }
+    if (!O.list) return {};
+    var age = function (o) { var t = new Date(o.lastStageChangeAt || o.updatedAt || o.createdAt).getTime(); return isNaN(t) ? 0 : Math.floor((Date.now() - t) / 864e5); };
+    var opps = O.list.filter(function (o) { return !/^\(example\)/i.test(String(o.name || "")); }).sort(function (a, b) { return age(b) - age(a); });
+    var val = opps.reduce(function (t, o) { return t + (Number(o.monetaryValue) || 0); }, 0);
+    var stuck = opps.filter(function (o) { return age(o) >= 7; });
+    var marco = {
+      now: opps.length ? "Reviewing " + plural(opps.length, "open deal") + (val ? " (" + peso(val) + ")" : "") : "No open deals in GoHighLevel",
+      tasks: opps.slice(0, 6).map(function (o) { return "Move " + (o.name || "a deal") + " forward" + (o.monetaryValue ? " (" + peso(o.monetaryValue) + ")" : "") + (age(o) ? ", no change in " + age(o) + " d" : ""); }),
+      k: "Open deals moving", kc: opps.length - stuck.length, kg: Math.max(1, opps.length),
+    };
+    var items = stuck.length ? [{ who: "marco", title: plural(stuck.length, "deal") + " with no change in 7+ days", tone: "info", badge: "Pipeline", sub: stuck.slice(0, 2).map(function (o) { return o.name; }).join(", "), path: "view:proposals" }] : [];
+    return { agents: { marco: marco }, items: items };
+  });
+
   /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
   var others = list.slice();
   list.push(function () {
