@@ -64,4 +64,18 @@
     var items = bad.length ? [{ who: "ivan", title: plural(bad.length, "app health check") + " failing", tone: "need", badge: "Health", sub: bad.map(function (c) { return c[0]; }).slice(0, 3).join(", "), path: "view:health" }] : [];
     return { agents: { ivan: ivan }, items: items };
   });
+  /* ---- Felix, Client Follow-Up: proposals drafted 2 to 10 days ago, so Karla checks the client got back ---- */
+  list.push(function () {
+    var h = []; try { h = JSON.parse(localStorage.getItem("zero1office-proposals:v1") || "[]") || []; } catch (err) { h = []; }
+    var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var now = Date.now(), due = h.filter(function (x) { var d = (now - new Date(x.at).getTime()) / 864e5; return d >= 2 && d <= 10; });
+    var day = function (x) { var d = new Date(x.at); return MON[d.getMonth()] + " " + d.getDate(); };
+    var felix = {
+      now: due.length ? "Following up " + plural(due.length, "proposal") + " from " + day(due[due.length - 1]) + " on" : h.length ? "No proposal is due for a follow-up yet" : "No proposals sent yet",
+      tasks: due.slice(0, 6).map(function (x) { return "Check if " + x.co + " " + x.type + " client replied (proposal of " + day(x) + ")"; }),
+      k: "Proposals in follow-up", kc: due.length, kg: Math.max(1, h.length),
+    };
+    var items = due.length ? [{ who: "felix", title: plural(due.length, "proposal") + " to follow up", tone: "info", badge: "Follow-up", sub: due.slice(0, 2).map(function (x) { return x.co + " " + x.type; }).join(", "), path: "view:propgen" }] : [];
+    return { agents: { felix: felix }, items: items };
+  });
 })();
