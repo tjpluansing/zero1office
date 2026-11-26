@@ -320,3 +320,79 @@ export interface FollowupSettings {
   max_attempts: number;
   escalate_overdue_days: number;
 }
+
+// --- provider quote requests + scorecard ---
+export type ProductLine = "hmo" | "group_hmo" | "life" | "preneed" | "nonlife";
+export type QuoteRequestStatus = "draft" | "open" | "done" | "cancelled";
+export type QuoteChannel = "email" | "insurer_portal" | "viber" | "phone";
+export type QuoteAskStatus = "waiting" | "quoted" | "declined" | "withdrawn";
+
+export interface QuoteRequestRow {
+  id: string;
+  ref_code: string;
+  client_id: string | null;
+  account_label: string | null;
+  product_line: ProductLine;
+  needs: string;
+  headcount: number | null;
+  status: QuoteRequestStatus;
+  notes: string | null;
+  ghl_link: string | null;
+  sent_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type QuoteRequestInput = Partial<Pick<QuoteRequestRow,
+  "id" | "client_id" | "account_label" | "product_line" | "headcount" | "notes" | "ghl_link">> & { needs: string };
+
+/** One insurer asked on a request. */
+export interface QuoteAskRow {
+  id: string;
+  request_id: string;
+  insurer: string;
+  channel: QuoteChannel;
+  sent_at: string;
+  due_on: string;               // reply-by, yyyy-mm-dd
+  status: QuoteAskStatus;
+  replied_at: string | null;
+  annual_premium: number | null;
+  plan_name: string | null;
+  reply_notes: string | null;
+  chosen: boolean;
+  followup_id: string | null;
+  updated_at: string;
+}
+
+export interface QuoteReplyInput {
+  status: "quoted" | "declined" | "waiting";
+  annual_premium?: number | null;
+  plan_name?: string | null;
+  note?: string | null;
+  /** When the insurer replied, if not now (logging late). */
+  replied_at?: string | null;
+}
+
+export interface ScorecardRow {
+  insurer: string;
+  asked: number;
+  replied: number;
+  quoted: number;
+  declined: number;
+  waiting: number;
+  overdue: number;
+  median_days: number | null;
+  avg_days: number | null;
+  on_time: number;
+  on_time_pct: number | null;
+  reply_pct: number;
+  chases: number;
+  chosen: number;
+  score: number | null;
+  grade: "A" | "B" | "C" | "D" | null;
+}
+
+export interface QuoteSettings { target_days: number }
+
+export type QuoteExportRow = Record<string, string | number | boolean | null>;

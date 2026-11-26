@@ -3,6 +3,8 @@ import type {
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
   DisbursementInput, DisbursementRow, SoaEvent, SoaExportRow, SoaInput, SoaRow,
   FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
+  ProductLine, QuoteAskRow, QuoteChannel, QuoteExportRow, QuoteReplyInput, QuoteRequestInput, QuoteRequestRow,
+  QuoteSettings, ScorecardRow,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
 import { createDemoApi } from "./demoApi";
@@ -93,6 +95,24 @@ export interface Api {
   addFollowupNote(id: string, note: string): Promise<void>;
   deleteFollowup(id: string): Promise<void>;
   exportFollowups(): Promise<FollowupRow[]>;
+
+  // --- provider quote requests (Quinn drafts, Karla sends and picks) ---
+  listQuoteRequests(): Promise<QuoteRequestRow[]>;
+  listQuoteAsks(): Promise<QuoteAskRow[]>;
+  getQuoteSettings(): Promise<QuoteSettings>;
+  /** Reply-by target. Karla (quotes.approve) or admins (admin_settings.edit). */
+  saveQuoteSettings(s: QuoteSettings): Promise<void>;
+  /** Creates (no id) or edits a request's details. Sending, picking and cancelling have their own calls. */
+  saveQuoteRequest(row: QuoteRequestInput): Promise<string>;
+  /** Karla sends the request to these insurers (or adds insurers to one already out). */
+  sendQuoteRequest(id: string, insurers: string[], channel: QuoteChannel, addFollowups: boolean): Promise<void>;
+  recordQuoteReply(askId: string, reply: QuoteReplyInput): Promise<void>;
+  /** Karla picks the quote for the proposal; closes the request. */
+  chooseQuote(askId: string): Promise<void>;
+  cancelQuoteRequest(id: string): Promise<void>;
+  deleteQuoteRequest(id: string): Promise<void>;
+  getScorecard(days: number, productLine: ProductLine | null): Promise<ScorecardRow[]>;
+  exportQuoteRequests(): Promise<QuoteExportRow[]>;
 }
 
 export const isDemo = import.meta.env.VITE_DEMO_MODE === "true";
