@@ -776,13 +776,24 @@
       .concat(overdue.slice(0, 3).map(function (x) { return { who: "nina", title: x.s.account_name + ": SOA " + x.s.soa_no, tone: "need", badge: x.f.overdue + " d overdue", sub: x.s.provider + " · " + peso(x.s.amount) + " unpaid", path: "soa:" + x.s.id }; }))
       .concat(docs.filter(function (x) { return x.f.m2307; }).slice(0, 2).map(function (x) { return { who: "nina", title: "2307 missing: " + x.s.account_name, tone: "info", badge: "2307", sub: "SOA " + x.s.soa_no + " · " + x.s.provider, path: "soa:" + x.s.id }; }));
     if (overdue.length > 3) items.push({ who: "nina", title: (overdue.length - 3) + " more overdue SOAs", tone: "info", badge: "View all", path: "billing" });
-    return { type: "z1-live", agents: { nina: nina, sol: sol }, items: items, empty: "SOAs and payouts are all on track" };
+    var out = { type: "z1-live", agents: { nina: nina, sol: sol }, items: items, empty: "SOAs and payouts are all on track" };
+    // Later add-ons register more live agents here: each returns {agents:{id:info}, items:[...]}.
+    (window.Z1LiveAgents || []).forEach(function (fn) {
+      try {
+        var r = fn() || {};
+        Object.keys(r.agents || {}).forEach(function (id) { out.agents[id] = r.agents[id]; });
+        out.items = out.items.concat(r.items || []);
+      } catch (err) { /* one agent's data problem must not stop the others */ }
+    });
+    if (out.items.length) out.empty = "";
+    return out;
   }
 
   var LIVE_SRC = (document.getElementById("z1LiveSrc") || {}).textContent || "";
   function officeWin() { var fr = document.getElementById("officeFrame"); try { return fr && fr.contentWindow; } catch (err) { return null; } }
   // Agents fed by real tracker data show it on their own cards too: Active with the real "now" while
   // they have real work, Idle when everything is done. Paolo can still set Offline by hand.
+  window.Z1LiveAgents = window.Z1LiveAgents || [];
   function syncTeam(agents) {
     if (typeof byId !== "function") return;
     var changed = false;
@@ -816,6 +827,7 @@
       var p = m.path.split(":");
       if (p[0] === "soa") { Z.tab = "soas"; go("billing"); openModal({ kind: "soa", id: p[1] }); }
       else if (p[0] === "payout") { Z.tab = "payouts"; go("billing"); openModal({ kind: "payout", id: p[1] }); }
+      else if (p[0] === "view" && VIEWS[p[1]]) { if (p[2]) S.spTab = p[2]; go(p[1]); }
       else { Z.tab = "soas"; Z.fNeed = true; go("billing"); }
     }
   });

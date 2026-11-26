@@ -94,6 +94,22 @@
     return at < 0 ? h + bar : h.slice(0, at) + bar + h.slice(at);
   }
   VIEWS.calendar = vCalendarG;
+
+  // The next 7 days, for Dom's live work. Only runs once Paolo has turned the calendar on, and refreshes every 30 minutes.
+  var U = { list: null, at: 0, busy: false };
+  function loadUpcoming() {
+    if (!G.on || U.busy || Date.now() - U.at < 30 * 60000) return;
+    var cl = window.claude; if (!cl || !cl.use) return;
+    U.busy = true;
+    var f = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T00:00:00"; };
+    var a = new Date(), b = new Date(a.getTime() + 8 * 864e5);
+    cl.use("mcp").then(function (mcp) {
+      if (!mcp) throw { code: "unavailable_here" };
+      return mcp.callTool(SERVER, "list_events", { startTime: f(a), endTime: f(b), pageSize: 100, orderBy: "startTime", timeZone: "Asia/Manila" });
+    }).then(function (res) { U.busy = false; U.list = toEvents(res); U.at = Date.now(); },
+      function () { U.busy = false; U.at = Date.now(); });
+  }
+  window.Z1GCal = { upcoming: function () { loadUpcoming(); return U.list; }, on: function () { return G.on; } };
   document.addEventListener("click", function (ev) {
     var b = ev.target && ev.target.closest && ev.target.closest("[data-zg]"); if (!b) return;
     ev.preventDefault(); ev.stopPropagation();
