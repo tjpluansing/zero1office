@@ -197,4 +197,46 @@
     var items = wait.length ? [{ who: "dante", title: plural(wait.length, "post") + " waiting for your OK", tone: "need", badge: "Content", sub: wait.slice(0, 2).map(function (x) { return x.title; }).join(", "), path: "view:content" }] : [];
     return { agents: { dante: dante }, items: items };
   });
+  /* ---- Maya, Proposals Lead: proposals from the Proposal generator waiting for Karla or sent back with changes ---- */
+  function pgAps() { return (S.data.approvals || []).filter(function (a) { return a.pg; }); }
+  list.push(function () {
+    var aps = pgAps(), wait = aps.filter(function (a) { return a.state === "waiting"; }), fix = aps.filter(function (a) { return a.state === "changes"; });
+    var maya = {
+      now: fix.length ? "Fixing " + plural(fix.length, "proposal") + " Karla sent back" : wait.length ? plural(wait.length, "proposal") + " waiting for Karla's OK" : aps.length ? "No proposal waiting" : "Waiting for a proposal from the Proposal generator",
+      tasks: fix.map(function (a) { return "Redo " + a.title + " with Karla's changes"; }).concat(wait.map(function (a) { return "Get Karla's OK on " + a.title; })).slice(0, 6),
+      k: "Proposals approved", kc: aps.filter(function (a) { return a.state === "approved" || a.state === "sent"; }).length, kg: Math.max(1, aps.length),
+    };
+    // Waiting proposals already show in Approvals; the office row only flags ones sent back.
+    var items = fix.length ? [{ who: "maya", title: plural(fix.length, "proposal") + " sent back for changes", tone: "info", badge: "Proposals", sub: fix.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [];
+    return { agents: { maya: maya }, items: items };
+  });
+
+  /* ---- Pia, Compliance Checker: waiting proposals whose checks flagged something to watch ---- */
+  list.push(function () {
+    var aps = pgAps().filter(function (a) { return a.state === "waiting"; });
+    var flagged = aps.filter(function (a) { return (a.checks || []).some(function (c) { return c[0] !== "ok"; }); });
+    var pia = {
+      now: flagged.length ? "Re-checking " + plural(flagged.length, "proposal") + " with flags" : aps.length ? "Every waiting proposal passed its checks" : "No proposal to check",
+      tasks: flagged.slice(0, 6).map(function (a) { var w = (a.checks || []).filter(function (c) { return c[0] !== "ok"; })[0]; return "Check " + a.title + ": " + String(w ? w[1] : "").slice(0, 80); }),
+      k: "Waiting proposals with clean checks", kc: aps.length - flagged.length, kg: Math.max(1, aps.length),
+    };
+    var items = flagged.length ? [{ who: "pia", title: plural(flagged.length, "proposal") + " flagged by checks", tone: "need", badge: "Check", sub: flagged.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [];
+    return { agents: { pia: pia }, items: items };
+  });
+
+  /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
+  var others = list.slice();
+  list.push(function () {
+    var need = [];
+    others.forEach(function (fn) { try { (fn().items || []).forEach(function (it) { if (it.tone === "need") need.push(it); }); } catch (err) { /* skip */ } });
+    var aps = (S.data.approvals || []).filter(function (a) { return a.state === "waiting"; }).length;
+    var tasks = need.map(function (it) { return it.title; });
+    if (aps) tasks.unshift("Remind you about " + plural(aps, "approval") + " waiting");
+    var kara = {
+      now: tasks.length ? "Chasing " + plural(tasks.length, "thing") + " that need you" : "Nothing needs you right now",
+      tasks: tasks.slice(0, 6),
+      k: "Items needing you", kc: tasks.length, kg: Math.max(1, tasks.length),
+    };
+    return { agents: { aria: kara }, items: [] };
+  });
 })();
