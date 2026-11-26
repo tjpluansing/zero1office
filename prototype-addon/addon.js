@@ -781,13 +781,31 @@
 
   var LIVE_SRC = (document.getElementById("z1LiveSrc") || {}).textContent || "";
   function officeWin() { var fr = document.getElementById("officeFrame"); try { return fr && fr.contentWindow; } catch (err) { return null; } }
+  // Agents fed by real tracker data show it on their own cards too: Active with the real "now" while
+  // they have real work, Idle when everything is done. Paolo can still set Offline by hand.
+  function syncTeam(agents) {
+    if (typeof byId !== "function") return;
+    var changed = false;
+    Object.keys(agents).forEach(function (id) {
+      var e = byId(id), a = agents[id];
+      if (!e || e.s === "offline") return;
+      var s = a.tasks && a.tasks.length ? "active" : "idle";
+      if (e.s !== s || e.now !== a.now) { e.s = s; e.now = a.now; changed = true; }
+    });
+    if (!changed) return;
+    try { save(); } catch (err) { /* storage full or blocked */ }
+    if (!document.querySelector(".modal.open, dialog[open]")) render();
+  }
   function pushLive() {
+    if (!me || !can("billing.view")) return;
+    var live = buildLive();
+    syncTeam(live.agents);
     var w = officeWin();
-    if (!w || !me || !can("billing.view")) return;
+    if (!w) return;
     try {
       if (typeof w.renderPanel !== "function") return;
       if (!w.__z1live && LIVE_SRC) { var sc = w.document.createElement("script"); sc.textContent = LIVE_SRC; w.document.body.appendChild(sc); w.__z1live = true; }
-      w.postMessage(buildLive(), "*");
+      w.postMessage(live, "*");
     } catch (err) { /* office not ready yet */ }
   }
   window.addEventListener("message", function (ev) {
