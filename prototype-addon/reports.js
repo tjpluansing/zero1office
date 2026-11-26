@@ -44,9 +44,31 @@
   function sw(on, id, lbl) { return '<button class="switch" role="switch" aria-checked="' + on + '" aria-label="' + lbl + '" id="' + id + '"></button>'; }
   function tin(id, v, lbl, dis) { return '<input type="time" class="inp" id="' + id + '" value="' + v + '" aria-label="' + lbl + '" style="width:auto"' + (dis ? " disabled" : "") + ">"; }
 
+  /* App checks (Paolo, 2026-11-26: "Add on/off switch to Daily full checkup and Quick checks"): a switch beside
+     each, saved in S.data.settings.fullOn / quickOn. The old "Off" choice in the Quick checks list moves to the switch. */
+  if (st().quick === "off") { st().quick = "60"; st().quickOn = false; }
+  function checkSwitches(h) {
+    var fOn = st().fullOn !== false, qOn = st().quickOn !== false;
+    h = h.replace('<option value="off">Off</option>', "").replace('<option value="off" selected>Off</option>', "");
+    h = h.replace(/(<select class="inp" id="setFull")([^>]*>[\s\S]*?<\/select>)/, function (m, a, b) {
+      return '<span style="display:flex;gap:10px;align-items:center">' + a + (fOn ? "" : " disabled") + b + sw(fOn, "z1FullOn", "Daily full check") + "</span>";
+    });
+    h = h.replace(/(<select class="inp" id="setQuick")([^>]*>[\s\S]*?<\/select>)/, function (m, a, b) {
+      return '<span style="display:flex;gap:10px;align-items:center">' + a + (qOn ? "" : " disabled") + b + sw(qOn, "z1QuickOn", "Quick checks") + "</span>";
+    });
+    if (!fOn) h = h.replace(/(checks this office app from top to bottom and posts the result on App health\.)/, "$1 <b>Off.</b>");
+    if (!qOn) h = h.replace(/(that the office is up and saving\.)/, "$1 <b>Off.</b>");
+    return h;
+  }
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest && ev.target.closest("#z1FullOn, #z1QuickOn"); if (!b) return;
+    var k = b.id === "z1FullOn" ? "fullOn" : "quickOn", name = b.id === "z1FullOn" ? "Daily full check" : "Quick checks";
+    st()[k] = st()[k] === false; save(); render(); toast(name + (st()[k] ? " turned on" : " turned off"));
+  });
+
   var origSettings = VIEWS.settings;
   VIEWS.settings = function () {
-    var h = origSettings.apply(this, arguments);
+    var h = checkSwitches(origSettings.apply(this, arguments));
     var oldRow = h.indexOf("<b>Kara's daily report</b>");
     if (oldRow < 0) oldRow = h.indexOf("<b>Kara\\'s daily report</b>");
     var rows =
