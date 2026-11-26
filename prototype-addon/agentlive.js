@@ -163,4 +163,38 @@
     var items = due.length ? [{ who: "enzo", title: plural(due.length, "license") + " to renew", tone: late.length ? "need" : "info", badge: late.length ? late.length + " expired" : "Licenses", sub: due.slice(0, 2).map(function (r) { return r.acct + ", " + when(r); }).join("; "), path: "view:licenses" }] : [];
     return { agents: { enzo: enzo }, items: items };
   });
+  /* ---- Iris, Graphic Designer: Carousel and Static posts in Content approvals that need design work ---- */
+  list.push(function () {
+    var posts = (S.data.posts || []).filter(function (x) { return x.fmt === "Carousel" || x.fmt === "Static"; });
+    var fix = posts.filter(function (x) { return x.state === "changes"; });
+    var pad = function (n) { return String(n).padStart(2, "0"); }, d0 = new Date(), d7 = new Date(d0.getTime() + 7 * 864e5);
+    var t0 = d0.getFullYear() + "-" + pad(d0.getMonth() + 1) + "-" + pad(d0.getDate()), t7 = d7.getFullYear() + "-" + pad(d7.getMonth() + 1) + "-" + pad(d7.getDate());
+    var soon = posts.filter(function (x) { return x.state === "scheduled" && x.date >= t0 && x.date <= t7; });
+    var work = fix.concat(soon);
+    var iris = {
+      now: fix.length ? "Redesigning " + plural(fix.length, "post") + " you asked to change" : soon.length ? "Finishing graphics for " + plural(soon.length, "post") + " going out this week" : posts.length ? "No design work waiting" : "Waiting for Carousel or Static posts in Content approvals",
+      tasks: fix.map(function (x) { return "Redo the " + x.fmt + " \u201c" + x.title + "\u201d with your changes"; })
+        .concat(soon.map(function (x) { return "Final graphics for \u201c" + x.title + "\u201d (" + x.fmt + ", posts " + x.date + ")"; })).slice(0, 6),
+      k: "Design posts approved", kc: posts.filter(function (x) { return x.state === "scheduled"; }).length, kg: Math.max(1, posts.length),
+    };
+    var items = fix.length ? [{ who: "iris", title: plural(fix.length, "post") + " being redesigned", tone: "info", badge: "Design", sub: fix.slice(0, 2).map(function (x) { return x.title; }).join(", "), path: "view:content" }] : [];
+    return { agents: { iris: iris }, items: items };
+  });
+
+  /* ---- Dante, Chief Marketing Officer: everything in marketing that is waiting on someone ---- */
+  list.push(function () {
+    var posts = S.data.posts || [], wait = posts.filter(function (x) { return x.state === "waiting"; }), fix = posts.filter(function (x) { return x.state === "changes"; });
+    var leads = T.list ? T.list.filter(function (c) { return new Date(c.dateAdded).getTime() >= Date.now() - 14 * 864e5 && !/^\(example\)/i.test(String(c.firstNameLowerCase || c.firstName || "")) && !(c.tags || []).some(function (t) { return /^contacted$/i.test(t); }); }) : [];
+    var tasks = [];
+    if (wait.length) tasks.push("Get your OK on " + plural(wait.length, "post") + " in Content approvals");
+    if (fix.length) tasks.push("Make sure your changes reach " + plural(fix.length, "post"));
+    if (leads.length) tasks.push("Check Tess messages " + plural(leads.length, "new lead") + " this week");
+    var dante = {
+      now: tasks.length ? tasks[0] : "Marketing is up to date",
+      tasks: tasks,
+      k: "Posts scheduled", kc: posts.filter(function (x) { return x.state === "scheduled"; }).length, kg: Math.max(1, posts.length),
+    };
+    var items = wait.length ? [{ who: "dante", title: plural(wait.length, "post") + " waiting for your OK", tone: "need", badge: "Content", sub: wait.slice(0, 2).map(function (x) { return x.title; }).join(", "), path: "view:content" }] : [];
+    return { agents: { dante: dante }, items: items };
+  });
 })();
