@@ -97,4 +97,40 @@
     var items = todo.length ? [{ who: "vince", title: plural(todo.length, "raw clip") + " to edit", tone: "info", badge: "Reels", sub: todo[0].name, path: "view:files" }] : [];
     return { agents: { vince: vince }, items: items };
   });
+  /* ---- Tess, Outreach Writer: GoHighLevel contacts from the last 14 days not tagged "contacted" yet ---- */
+  // Read-only: one contact search every 15 minutes. Tag a contact "contacted" in GoHighLevel once the first message is out.
+  var T = { list: null, at: 0, busy: false };
+  function ghlData(r) {
+    if (typeof liveGhl === "function") return liveGhl(r);
+    var p = r && r.payload; if (p && p.data) return p.data;
+    try { var t = (r.content || []).filter(function (b) { return b.type === "text"; })[0]; var j = JSON.parse(t.text); return j.data || j; } catch (err) { return {}; }
+  }
+  function loadTess() {
+    var cl = window.claude; if (T.busy || Date.now() - T.at < 15 * 60000 || !cl || !cl.use) return;
+    T.busy = true;
+    cl.use("mcp").then(function (m) {
+      if (!m) throw { code: "unavailable_here" };
+      return m.callTool("GHL", "execute_operation", { operationId: "search-contacts-advanced", reason: "Tess checks new leads for a first message",
+        params: { body: { pageLimit: 50, sort: [{ field: "dateAdded", direction: "desc" }], projection: ["id", "firstName", "lastName", "companyName", "dateAdded", "tags"] } } });
+    }).then(function (r) { T.busy = false; T.at = Date.now(); T.list = (ghlData(r).contacts || []); },
+      function () { T.busy = false; T.at = Date.now(); });
+  }
+  list.push(function () {
+    loadTess();
+    if (!T.list) return {};
+    var cut = Date.now() - 14 * 864e5;
+    var recent = T.list.filter(function (c) {
+      var n = String(c.firstNameLowerCase || c.firstName || "");
+      return new Date(c.dateAdded).getTime() >= cut && !/^\(example\)/i.test(n);
+    });
+    var todo = recent.filter(function (c) { return !(c.tags || []).some(function (t) { return /^contacted$/i.test(t); }); });
+    var nm = function (c) { var n = ((c.firstName || c.firstNameLowerCase || "") + " " + (c.lastName || "")).trim() || "a new lead"; return n.replace(/\b\w/g, function (x) { return x.toUpperCase(); }) + (c.companyName ? " (" + c.companyName + ")" : ""); };
+    var tess = {
+      now: todo.length ? "Writing first messages for " + plural(todo.length, "new lead") : "Every new lead has had a first message",
+      tasks: todo.slice(0, 6).map(function (c) { return "Write the first message to " + nm(c); }),
+      k: "New leads messaged (14 days)", kc: recent.length - todo.length, kg: Math.max(1, recent.length),
+    };
+    var items = todo.length ? [{ who: "tess", title: plural(todo.length, "new lead") + " to message", tone: "info", badge: "Outreach", sub: todo.slice(0, 2).map(nm).join(", "), path: "view:leads" }] : [];
+    return { agents: { tess: tess }, items: items };
+  });
 })();
