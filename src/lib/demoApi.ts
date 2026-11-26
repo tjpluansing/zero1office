@@ -11,7 +11,11 @@ import type {
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
   DisbursementRow, SoaEvent, SoaRow,
   FollowupEvent, FollowupRow, FollowupSettings,
+  QuoteAskRow, QuoteExportRow, QuoteRequestRow, QuoteSettings,
 } from "./types";
+import {
+  DEFAULT_QUOTE_SETTINGS, PRODUCT_LABEL, computeScorecard, quoteSettingsError, replyByFor, turnaround,
+} from "./quotes";
 import { computeStage, STAGES } from "./soa";
 import {
   CLOSED, DEFAULT_SETTINGS, settingsError, MINIMAL_TEXT_ERROR, addBusinessDays, afterChase, daysBetween, hasLongNumber, todayIso,
@@ -27,12 +31,12 @@ const permissions: Permission[] = [
   P("clients", "Client Masterlist", "edit", "Edit clients", 22),
   P("clients", "Client Masterlist", "delete", "Delete clients", 23),
   P("clients", "Client Masterlist", "export", "Export the client list", 24),
-  P("quotes", "Quoting & Proposals", "view", "See quotes and proposals", 30),
-  P("quotes", "Quoting & Proposals", "create", "Draft quotes", 31),
-  P("quotes", "Quoting & Proposals", "edit", "Edit quotes", 32),
-  P("quotes", "Quoting & Proposals", "delete", "Delete quotes", 33),
-  P("quotes", "Quoting & Proposals", "export", "Export quotes / PDFs", 34),
-  P("quotes", "Quoting & Proposals", "approve", "Approve a quote before it goes to a client", 35),
+  P("quotes", "Quoting & Proposals", "view", "See quote requests, insurer replies and the scorecard", 30),
+  P("quotes", "Quoting & Proposals", "create", "Draft quote requests", 31),
+  P("quotes", "Quoting & Proposals", "edit", "Edit drafts, log insurer replies", 32),
+  P("quotes", "Quoting & Proposals", "delete", "Delete quote requests", 33),
+  P("quotes", "Quoting & Proposals", "export", "Export quote requests and the scorecard", 34),
+  P("quotes", "Quoting & Proposals", "approve", "Send requests to insurers, pick the quote for the proposal", 35),
   P("billing", "Billing & SOA", "view", "See billing and statements of account", 40),
   P("billing", "Billing & SOA", "create", "Create statements", 41),
   P("billing", "Billing & SOA", "edit", "Edit statements", 42),
@@ -89,6 +93,9 @@ interface DemoState {
   followups: FollowupRow[];
   followupEvents: FollowupEvent[];
   followupSettings: FollowupSettings;
+  quoteRequests: QuoteRequestRow[];
+  quoteAsks: QuoteAskRow[];
+  quoteSettings: QuoteSettings;
 }
 
 const POLICY: Policy = {
@@ -168,7 +175,7 @@ function seed(): DemoState {
     ],
     audit: [],
     ...seedBilling(),
-    ...seedFollowups(),
+    ...withQuotes(seedFollowups()),
   };
 }
 
@@ -260,12 +267,119 @@ function seedFollowups(): Pick<DemoState, "followups" | "followupEvents" | "foll
   return { followups, followupEvents, followupSettings: { ...DEFAULT_SETTINGS } };
 }
 
+/**
+ * Quote history for the scorecard: ten past requests over ~11 weeks, with
+ * each insurer answering in its own typical way, plus three live ones.
+ */
+function seedQuotes(): Pick<DemoState, "quoteRequests" | "quoteAsks" | "quoteSettings"> & { extraFollowups: FollowupRow[] } {
+  const at = (dIso: string, hourManila: number) => new Date(`${dIso}T${String(hourManila).padStart(2, "0")}:00:00+08:00`).toISOString();
+  const today = todayIso();
+  /** n business days before today. */
+  const minusDays = (n: number) => {
+    const x = new Date(`${today}T12:00:00`);
+    for (let k = 0; k < n;) { x.setDate(x.getDate() - 1); if (x.getDay() % 6 !== 0) k++; }
+    return x.toISOString().slice(0, 10);
+  };
+  // typical business days to reply, cycled per request; -1 = declined
+  const habits: Record<string, number[]> = {
+    Maxicare: [0, 1, 0, 1, 1, 0, 2, 1, 0, 1],
+    Medicard: [1, 2, 1, 2, 3, 1, 2, 2, 1, 2],
+    Intellicare: [2, 4, 3, 2, 5, 3, 2, 4, 3, 3],
+    IMS: [3, 5, -1, 4, 6, 3, -1, 5, 4, 3],
+    KHL: [2, 3, 4, -1, 3, 2, 5, 3, 2, 4],
+    FWD: [1, 1, 2, 1, 0, 1, 2, 1, 1, 1],
+  };
+  const needs: [QuoteRequestRow["product_line"], string, number | null, string | null][] = [
+    ["hmo", "Family of 4, ages 38/36/8/5. 150k MBL, semi-private room, Makati / BGC hospitals.", 4, null],
+    ["group_hmo", "Group HMO for 25 regular staff, ages 22-50. 100k MBL, ward to semi-private, dental.", 25, "Santos Bakery"],
+    ["hmo", "Individual, age 30. 80k MBL, ward room, near Quezon City.", 1, null],
+    ["life", "Individual, age 41, non-smoker. 2M term life, 10-year pay.", 1, null],
+    ["group_hmo", "Group HMO for 12 staff plus 6 dependents. 150k MBL, private room.", 18, "Dela Cruz Trading"],
+    ["hmo", "Couple, ages 56/54. 200k MBL, private room, pre-existing cover after 1 year.", 2, null],
+    ["hmo", "Family of 3, ages 33/31/1. 100k MBL, semi-private, pedia access in Pasig.", 3, null],
+    ["life", "Individual, age 28. Variable life (VUL), 1M cover, 5-year pay.", 1, null],
+    ["group_hmo", "Group HMO for 40 staff, ages 21-45. 80k MBL, ward, APE included.", 40, "Northpoint BPO"],
+    ["hmo", "Individual, age 46. 120k MBL, semi-private, Cebu hospitals.", 1, null],
+  ];
+  const quoteRequests: QuoteRequestRow[] = [];
+  const quoteAsks: QuoteAskRow[] = [];
+  const base = { client_id: null, notes: null, ghl_link: null };
+  needs.forEach(([product_line, need, headcount, label], i) => {
+    const sentDay = minusDays(7 + i * 6);
+    const id = `qr-h${i + 1}`;
+    const sent_at = at(sentDay, 10);
+    const insurers = product_line === "life" ? ["FWD"] : i % 3 === 0
+      ? ["Maxicare", "Medicard", "Intellicare", "IMS"] : ["Maxicare", "Medicard", "Intellicare", "KHL"];
+    let best: { id: string; p: number } | null = null;
+    const due_on = addBusinessDays(sentDay, 2);
+    insurers.forEach((ins, k) => {
+      const t = habits[ins][i];
+      const replyDay = addBusinessDays(sentDay, Math.max(t, 0));
+      const premium = t < 0 ? null : Math.round((headcount ?? 1) * (product_line === "life" ? 24000 : 14500) * (1 + k * 0.06 + (i % 3) * 0.03) / 100) * 100;
+      const aid = `${id}-${k}`;
+      if (premium !== null && (!best || premium < best.p)) best = { id: aid, p: premium };
+      quoteAsks.push({ id: aid, request_id: id, insurer: ins, channel: "email", sent_at, due_on,
+        status: t < 0 ? "declined" : "quoted", replied_at: at(replyDay, 15), annual_premium: premium,
+        plan_name: premium ? `${ins} ${headcount && headcount > 4 ? "Corporate" : "Gold"} ${product_line === "life" ? "Term" : "Plan"}` : null,
+        reply_notes: t < 0 ? "Declined: outside their current appetite" : null, chosen: false, followup_id: null, updated_at: at(replyDay, 15) });
+    });
+    if (best) quoteAsks.find((a) => a.id === best!.id)!.chosen = true;
+    quoteRequests.push({ ...base, id, ref_code: `QR-2026-${String(i + 1).padStart(4, "0")}`, account_label: label ?? `Client ${i + 1}`,
+      product_line, needs: need, headcount, status: "done", sent_at, closed_at: at(addBusinessDays(sentDay, 6), 11),
+      created_at: at(sentDay, 9), updated_at: at(addBusinessDays(sentDay, 6), 11) });
+  });
+
+  // live requests
+  const extraFollowups: FollowupRow[] = [];
+  const live = (n: number, daysAgoSent: number | null, product_line: QuoteRequestRow["product_line"], need: string,
+    headcount: number | null, client_id: string | null, label: string | null,
+    asks: [string, "waiting" | "quoted" | "declined", number | null][]) => {
+    const id = `qr-l${n}`;
+    const sentDay = daysAgoSent === null ? null : minusDays(daysAgoSent);
+    const sent_at = sentDay ? at(sentDay, 9) : null;
+    const due_on = sentDay ? addBusinessDays(sentDay, 2) : "";
+    quoteRequests.push({ ...base, id, ref_code: `QR-2026-${String(10 + n).padStart(4, "0")}`, client_id, account_label: label,
+      product_line, needs: need, headcount, status: sentDay ? "open" : "draft", sent_at, closed_at: null,
+      created_at: sent_at ?? new Date().toISOString(), updated_at: sent_at ?? new Date().toISOString() });
+    if (!sentDay || !sent_at) return;
+    asks.forEach(([ins, status, premium], k) => {
+      const fid = `f-q${n}-${k}`;
+      extraFollowups.push({ id: fid, title: "Quote from insurer", kind: "insurer_reply", party: "insurer", client_id: null,
+        insurer: ins, reference: `QR-2026-${String(10 + n).padStart(4, "0")}`, channel: "email",
+        status: status === "waiting" ? (due_on < today ? "waiting" : "open") : "done", due_on, next_chase_on: due_on,
+        attempts: status === "waiting" && due_on < today ? 1 : 0, last_chased_at: status === "waiting" && due_on < today ? hoursAgo(20) : null,
+        escalation_reason: null, felix_drafts: true, assignee_id: "u-karla", notes: need.slice(0, 200), ghl_link: null,
+        created_at: sent_at, updated_at: sent_at, closed_at: status === "waiting" ? null : hoursAgo(6) });
+      quoteAsks.push({ id: `${id}-${k}`, request_id: id, insurer: ins, channel: "email", sent_at, due_on, status,
+        replied_at: status === "waiting" ? null : hoursAgo(6), annual_premium: premium,
+        plan_name: premium ? `${ins} Gold Plan` : null, reply_notes: status === "declined" ? "No pre-existing cover for this age" : null,
+        chosen: false, followup_id: fid, updated_at: hoursAgo(6) });
+    });
+  };
+  live(1, 3, "hmo", "Couple, ages 58/57. 150k MBL, private room, St. Luke's access.", 2, "c1", null,
+    [["Maxicare", "quoted", 71800], ["Medicard", "quoted", 74200], ["Intellicare", "waiting", null], ["KHL", "declined", null]]);
+  live(2, 1, "group_hmo", "Group HMO for 15 staff, ages 20-40. 100k MBL, semi-private, dental.", 15, "c3", "Santos Bakery",
+    [["Maxicare", "waiting", null], ["Medicard", "waiting", null], ["IMS", "waiting", null]]);
+  live(3, null, "life", "Individual, age 35, non-smoker. 3M term life with critical illness rider.", 1, "c2", null, []);
+  return { quoteRequests, quoteAsks, quoteSettings: { ...DEFAULT_QUOTE_SETTINGS }, extraFollowups };
+}
+
+function withQuotes(f: ReturnType<typeof seedFollowups>) {
+  const { extraFollowups, ...q } = seedQuotes();
+  return { ...f, followups: [...f.followups, ...extraFollowups], ...q };
+}
+
 export function createDemoApi(): Api {
   let state: DemoState;
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
     if (!state?.users || !state.reviews || !state.integrations || !state.events || !state.followups) throw new Error();
     if (!state.soas) Object.assign(state, seedBilling());
+    if (!state.quoteRequests) {
+      const q = seedQuotes();
+      state.followups.push(...q.extraFollowups);
+      Object.assign(state, { quoteRequests: q.quoteRequests, quoteAsks: q.quoteAsks, quoteSettings: q.quoteSettings });
+    }
   } catch {
     state = seed();
   }
@@ -305,6 +419,14 @@ export function createDemoApi(): Api {
       kind, channel: null, note: null, details: {}, ...x });
   };
   const emit = (e: AuthEvent) => listeners.forEach((l) => l(e));
+  const today = () => todayIso();
+  /** A withdrawn insurer ask: cancel its chase (only Karla may cancel follow-ups). */
+  const closeChase = (fid: string | null) => {
+    const f = fid ? state.followups.find((q) => q.id === fid) : null;
+    if (!f || !can("followups.approve") || CLOSED.includes(f.status)) return;
+    fev(f.id, "status", { details: { from: f.status, to: "cancelled" } });
+    Object.assign(f, { status: "cancelled", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  };
   const temp = () => Math.random().toString(36).slice(2, 10) + "-Z1!";
 
   const blankSoa = (): SoaRow => ({
@@ -850,6 +972,174 @@ export function createDemoApi(): Api {
       log("export", null, { rows: state.followups.length }, "followups");
       save();
       return state.followups;
+    },
+    // --- quote requests ---
+    async listQuoteRequests() {
+      need("quotes.view");
+      return [...state.quoteRequests].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => ({ ...r }));
+    },
+    async listQuoteAsks() {
+      need("quotes.view");
+      return state.quoteAsks.map((a) => ({ ...a }));
+    },
+    async getQuoteSettings() { need("quotes.view"); return { ...state.quoteSettings }; },
+    async saveQuoteSettings(s) {
+      await wait();
+      if (!can("quotes.approve") && !can("admin_settings.edit")) throw new Error("Only Karla or an admin can change the reply-by target.");
+      const bad = quoteSettingsError(s);
+      if (bad) throw new Error(bad);
+      log("quotes.settings_changed", null, { target_days: [state.quoteSettings.target_days, s.target_days] }, "quotes");
+      state.quoteSettings = { ...s };
+      save();
+    },
+    async saveQuoteRequest(row) {
+      await wait();
+      if ([row.needs, row.notes, row.account_label].some(hasLongNumber)) throw new Error(MINIMAL_TEXT_ERROR);
+      if (row.needs.trim().length < 5) throw new Error("Describe what the client needs (at least 5 characters)");
+      if (!row.client_id && !row.account_label?.trim()) throw new Error("Pick a client or type who the quote is for");
+      const now = new Date().toISOString();
+      if (row.id) {
+        need("quotes.edit");
+        const r = state.quoteRequests.find((x) => x.id === row.id);
+        if (!r) throw new Error("Quote request not found");
+        if (r.status === "done" || r.status === "cancelled") throw new Error("This request is closed");
+        if (r.status === "open" && row.product_line && row.product_line !== r.product_line)
+          throw new Error("The product cannot change after the request was sent");
+        Object.assign(r, row, { updated_at: now });
+        save();
+        return r.id;
+      }
+      need("quotes.create");
+      const id = `qr-${Date.now()}`;
+      const n = state.quoteRequests.length + 1;
+      state.quoteRequests.push({
+        client_id: null, account_label: null, product_line: "hmo", headcount: null, notes: null, ghl_link: null,
+        ...row, id, ref_code: `QR-${today().slice(0, 4)}-${String(n).padStart(4, "0")}`, status: "draft",
+        sent_at: null, closed_at: null, created_at: now, updated_at: now,
+      });
+      save();
+      return id;
+    },
+    async sendQuoteRequest(id, insurers, channel, addFollowups) {
+      await wait();
+      if (!can("quotes.approve")) throw new Error("Only Karla can send quote requests to insurers");
+      const r = state.quoteRequests.find((x) => x.id === id);
+      if (!r) throw new Error("Quote request not found");
+      if (r.status !== "draft" && r.status !== "open") throw new Error("This request is closed");
+      const due_on = replyByFor(state.quoteSettings);
+      const now = new Date().toISOString();
+      let n = 0;
+      for (const raw of insurers) {
+        const ins = raw.trim();
+        if (!ins || state.quoteAsks.some((a) => a.request_id === id && a.insurer.toLowerCase() === ins.toLowerCase())) continue;
+        let followup_id: string | null = null;
+        if (addFollowups && can("followups.create")) {
+          followup_id = `f-${Date.now()}-${n}`;
+          state.followups.push({
+            id: followup_id, title: "Quote from insurer", kind: "insurer_reply", party: "insurer", client_id: null, insurer: ins,
+            reference: r.ref_code, channel: channel === "insurer_portal" || channel === "viber" || channel === "phone" ? channel : "email",
+            status: "open", due_on, next_chase_on: due_on, attempts: 0, last_chased_at: null, escalation_reason: null,
+            felix_drafts: true, assignee_id: state.sessionUserId, notes: r.needs.slice(0, 200), ghl_link: null,
+            created_at: now, updated_at: now, closed_at: null,
+          });
+          fev(followup_id, "created", { details: { title: "Quote from insurer", party: "insurer" } });
+        }
+        state.quoteAsks.push({ id: `qa-${Date.now()}-${n}`, request_id: id, insurer: ins, channel, sent_at: now, due_on,
+          status: "waiting", replied_at: null, annual_premium: null, plan_name: null, reply_notes: null, chosen: false,
+          followup_id, updated_at: now });
+        n++;
+      }
+      if (!n) throw new Error("Pick at least one insurer that has not been asked yet");
+      Object.assign(r, { status: "open", sent_at: r.sent_at ?? now, updated_at: now });
+      save();
+    },
+    async recordQuoteReply(askId, x) {
+      await wait();
+      need("quotes.edit");
+      if ([x.note, x.plan_name].some(hasLongNumber)) throw new Error(MINIMAL_TEXT_ERROR);
+      const a = state.quoteAsks.find((q) => q.id === askId);
+      if (!a) throw new Error("Insurer reply not found");
+      const r = state.quoteRequests.find((q) => q.id === a.request_id)!;
+      if (r.status !== "open") throw new Error("This request is closed");
+      if (a.chosen) throw new Error("Karla already picked this quote");
+      if (x.status === "quoted" && (x.annual_premium == null || Number.isNaN(x.annual_premium)))
+        throw new Error("Enter the annual premium the insurer quoted");
+      const when = x.replied_at ?? new Date().toISOString();
+      if (x.status !== "waiting" && (when > new Date(Date.now() + 300_000).toISOString() || when < a.sent_at))
+        throw new Error("The reply date must be between the day it was sent and today");
+      Object.assign(a, {
+        status: x.status,
+        replied_at: x.status === "waiting" ? null : when,
+        annual_premium: x.status === "quoted" ? x.annual_premium : null,
+        plan_name: x.status === "quoted" ? x.plan_name?.trim() || null : null,
+        reply_notes: x.note?.trim() || null,
+        updated_at: new Date().toISOString(),
+      });
+      const f = a.followup_id ? state.followups.find((q) => q.id === a.followup_id) : null;
+      if (f) {
+        const to = x.status === "waiting" ? (f.status === "done" ? "open" : null)
+          : ["open", "waiting", "escalated"].includes(f.status) ? "done" : null;
+        if (to) {
+          fev(f.id, "status", { details: { from: f.status, to } });
+          Object.assign(f, { status: to, closed_at: to === "done" ? new Date().toISOString() : null, updated_at: new Date().toISOString() });
+        }
+      }
+      save();
+    },
+    async chooseQuote(askId) {
+      await wait();
+      if (!can("quotes.approve")) throw new Error("Only Karla can pick the quote for the proposal");
+      const a = state.quoteAsks.find((q) => q.id === askId);
+      if (!a) throw new Error("Insurer reply not found");
+      if (a.status !== "quoted") throw new Error("Only a quote the insurer sent can be picked");
+      const r = state.quoteRequests.find((q) => q.id === a.request_id)!;
+      if (r.status !== "open") throw new Error("This request is closed");
+      for (const x of state.quoteAsks.filter((q) => q.request_id === r.id)) {
+        x.chosen = x.id === askId;
+        if (x.status === "waiting") { x.status = "withdrawn"; closeChase(x.followup_id); }
+      }
+      Object.assign(r, { status: "done", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      log("quotes.chosen", r.id, { ref: r.ref_code, insurer: a.insurer }, "quote_request");
+      save();
+    },
+    async cancelQuoteRequest(id) {
+      await wait();
+      const r = state.quoteRequests.find((q) => q.id === id);
+      if (!r) throw new Error("Quote request not found");
+      if (!can(r.status === "draft" ? "quotes.edit" : "quotes.approve")) throw new Error("Only Karla can cancel a request that was already sent");
+      if (r.status !== "draft" && r.status !== "open") throw new Error("This request is closed");
+      for (const x of state.quoteAsks.filter((q) => q.request_id === id && q.status === "waiting")) {
+        x.status = "withdrawn"; closeChase(x.followup_id);
+      }
+      Object.assign(r, { status: "cancelled", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      save();
+    },
+    async deleteQuoteRequest(id) {
+      need("quotes.delete");
+      state.quoteRequests = state.quoteRequests.filter((r) => r.id !== id);
+      state.quoteAsks = state.quoteAsks.filter((a) => a.request_id !== id);
+      save();
+    },
+    async getScorecard(days, productLine) {
+      need("quotes.view");
+      return computeScorecard(state.quoteAsks, state.quoteRequests, state.followups, days, productLine);
+    },
+    async exportQuoteRequests() {
+      need("quotes.export");
+      const clientName = (id: string | null) => state.clients.find((c) => c.id === id)?.full_name ?? null;
+      const rows = state.quoteRequests.flatMap((r): QuoteExportRow[] => {
+        const asks = state.quoteAsks.filter((a) => a.request_id === r.id);
+        const head = { ref_code: r.ref_code, account: clientName(r.client_id) ?? r.account_label, product_line: PRODUCT_LABEL[r.product_line],
+          needs: r.needs, request_status: r.status };
+        return asks.length ? asks.map((a) => ({ ...head, insurer: a.insurer, channel: a.channel, sent_at: a.sent_at, due_on: a.due_on,
+          reply: a.status, replied_at: a.replied_at, turnaround_days: turnaround(a), annual_premium: a.annual_premium,
+          plan_name: a.plan_name, chosen: a.chosen }))
+          : [{ ...head, insurer: null, channel: null, sent_at: null, due_on: null, reply: null, replied_at: null,
+            turnaround_days: null, annual_premium: null, plan_name: null, chosen: null }];
+      });
+      log("export", null, { rows: rows.length }, "quotes");
+      save();
+      return rows;
     },
   };
 }

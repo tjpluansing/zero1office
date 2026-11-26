@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
 import type { IntegrationAlert, IntegrationRow, SyncLog, TestResult } from "./types";
 import type { FollowupEvent, FollowupRow, FollowupSettings } from "./types";
+import type { QuoteAskRow, QuoteExportRow, QuoteRequestRow, QuoteSettings, ScorecardRow } from "./types";
 import type {
   Access, AccessReviewData, AuditRow, Catalog, ClientRow, DisbursementRow, MfaEnrollment, Override, Policy,
   SoaEvent, SoaExportRow, SoaRow, UserRow,
@@ -304,6 +305,55 @@ export function createSupabaseApi(): Api {
     async exportFollowups() {
       const rows = must(await sb.rpc("export_followups")) as FollowupRow[];
       await sb.rpc("log_export", { p_what: "followups", p_rows: rows.length });
+      return rows;
+    },
+    async listQuoteRequests() {
+      return must(await sb.from("quote_requests").select("*").order("created_at", { ascending: false })) as QuoteRequestRow[];
+    },
+    async listQuoteAsks() {
+      return must(await sb.from("quote_asks").select("*").order("sent_at")) as QuoteAskRow[];
+    },
+    async getQuoteSettings() {
+      return must(await sb.from("quote_settings").select("target_days").single()) as QuoteSettings;
+    },
+    async saveQuoteSettings(s) {
+      const rows = must(await sb.from("quote_settings").update({ target_days: s.target_days }).eq("id", true).select("id"));
+      if (!rows?.length) throw new Error("Only Karla or an admin can change the reply-by target.");
+    },
+    async saveQuoteRequest(row) {
+      const { id, ...fields } = row;
+      if (id) {
+        const rows = must(await sb.from("quote_requests").update(fields).eq("id", id).select("id"));
+        if (!rows?.length) throw new Error("You do not have permission to edit quote requests.");
+        return id;
+      }
+      return (must(await sb.from("quote_requests").insert(fields).select("id").single()) as { id: string }).id;
+    },
+    async sendQuoteRequest(id, insurers, channel, addFollowups) {
+      must(await sb.rpc("send_quote_request", { p_id: id, p_insurers: insurers, p_channel: channel, p_add_followups: addFollowups }));
+    },
+    async recordQuoteReply(askId, r) {
+      must(await sb.rpc("record_quote_reply", {
+        p_ask_id: askId, p_status: r.status, p_annual_premium: r.annual_premium ?? null, p_plan_name: r.plan_name ?? null,
+        p_note: r.note ?? null, p_replied_at: r.replied_at ?? null,
+      }));
+    },
+    async chooseQuote(askId) {
+      must(await sb.rpc("choose_quote", { p_ask_id: askId }));
+    },
+    async cancelQuoteRequest(id) {
+      must(await sb.rpc("cancel_quote_request", { p_id: id }));
+    },
+    async deleteQuoteRequest(id) {
+      const rows = must(await sb.from("quote_requests").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete quote requests.");
+    },
+    async getScorecard(days, productLine) {
+      return must(await sb.rpc("quote_scorecard", { p_days: days, p_product_line: productLine })) as ScorecardRow[];
+    },
+    async exportQuoteRequests() {
+      const rows = must(await sb.rpc("export_quote_requests")) as QuoteExportRow[];
+      await sb.rpc("log_export", { p_what: "quotes", p_rows: rows.length });
       return rows;
     },
   };

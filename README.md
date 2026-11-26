@@ -141,7 +141,6 @@ select cron.schedule('z1-sync-retries', '* * * * *', $$select public.process_int
 select cron.schedule('z1-sync-purge', '15 3 * * *', $$select public.purge_integration_events()$$);
 ```
 
-<<<<<<< HEAD
 ## Follow-up queue
 
 **Follow-ups** (`/followups`) lists every pending requirement or reply Ask Karla is chasing from a client or an
@@ -157,8 +156,9 @@ Escalate items that are past their due date every morning (8 AM Manila = 00:00 U
 
 ```sql
 select cron.schedule('z1-followups-overdue', '0 0 * * *', $$select public.escalate_overdue_followups()$$);
-=======
-### Daily health check and alerts
+```
+
+## Integration health check and alerts
 
 Admins see a banner and an alert list on Admin → Integrations when a connection breaks, GHL updates fail or get
 stuck, webhooks go quiet for 7 days, a key is over 90 days old, or the Microsoft client secret is within 30 days
@@ -182,8 +182,27 @@ select cron.schedule('z1-health-check', '0 0 * * *', $$
       'X-Health-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'z1_health_secret')),
     body := '{}'::jsonb)
 $$);
->>>>>>> origin/claude/project-thread-bhgdym
 ```
+
+## Quote requests and insurer scorecard
+
+**Quoting & Proposals** (`/quotes`) tracks every request for a quote that Ask Karla sends to insurers.
+
+- Anyone with `quotes.create` (assistant included) drafts a request: who it is for, the product, and what to quote
+  (ages, benefit limit, room, area). Names, birthdays and ID numbers are refused; census files go straight to the insurer.
+- Quinn, the AI employee, drafts the request for each insurer (email or a short Viber/portal version). Karla
+  (`quotes.approve`) sends it from karla@ask-karla.com and clicks **I sent it**. Each insurer gets a reply-by date
+  (`quote_settings.target_days`, default 2 business days, changed with **Reply-by target**) and, by default, a
+  "Quote from insurer" item in Follow-ups so Felix chases it when it is late.
+- The assistant logs each reply (quoted with the annual premium and plan, or declined). That closes the follow-up.
+- Karla picks the quote that goes into the proposal. The request closes, insurers still waiting are marked not
+  needed and their chases are cancelled. Picks are in the audit log.
+
+The **Insurer scorecard** tab grades each insurer over the last 30 to 365 days, optionally per product: reply rate,
+share answered by the reply-by date, usual turnaround in business days (Manila time), late replies still open,
+chases sent, and how often their quote was picked. Score = 60% on time + 40% reply rate (A 85+, B 70+, C 50+, D);
+insurers with fewer than 3 requests in the period are not graded. The same numbers come from
+`public.quote_scorecard(days, product_line)` and `computeScorecard()` in `src/lib/quotes.ts` (demo).
 
 ## Tests
 
@@ -195,4 +214,6 @@ Runs the migrations against a scratch database with a stand-in `auth` schema and
 the rules: domain restriction, forced password change, page and action blocking, self-lockout,
 last Super Admin, no privilege escalation, suspension and the audit log. `followups_test.sql` covers the
 follow-up queue (assistant limits, chase counter, escalation, waive/reopen by Karla only, no ID numbers).
+`quotes_test.sql` covers quote requests (only Karla sends and picks, follow-ups open and close with replies,
+withdrawn insurers, grades, period and product filters).
 Pass a test name to run just one: `npm run test:db -- followups_test`.
