@@ -1,6 +1,7 @@
 import type {
   AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult, IntegrationAlert,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
+  DisbursementInput, DisbursementRow, SoaEvent, SoaExportRow, SoaInput, SoaRow,
   FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
@@ -63,6 +64,20 @@ export interface Api {
   deleteClient(id: string): Promise<void>;
   exportClients(): Promise<ClientRow[]>;
 
+  // --- Billing & SOA: collections tracker ---
+  listSoas(): Promise<SoaRow[]>;
+  saveSoa(row: SoaInput): Promise<void>;
+  /** Insert many SOAs at once (CSV import). Rejects the whole batch on any error. */
+  importSoas(rows: SoaInput[]): Promise<number>;
+  deleteSoa(id: string): Promise<void>;
+  listSoaEvents(soaId: string): Promise<SoaEvent[]>;
+  addSoaEvent(soaId: string, kind: "note" | "follow_up", body: string): Promise<void>;
+  listDisbursements(): Promise<DisbursementRow[]>;
+  saveDisbursement(row: DisbursementInput): Promise<string>;
+  deleteDisbursement(id: string): Promise<void>;
+  /** Point the given SOAs at a payout (or unlink with null), with the commission each one earned. */
+  linkSoas(disbursementId: string | null, links: { soa_id: string; commission_amount: number | null }[]): Promise<void>;
+  exportSoas(): Promise<SoaExportRow[]>;
   // --- follow-up queue (Felix + assistant) ---
   listFollowups(): Promise<FollowupRow[]>;
   listFollowupEvents(id: string): Promise<FollowupEvent[]>;

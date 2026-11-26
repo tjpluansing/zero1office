@@ -2,7 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
 import type { IntegrationAlert, IntegrationRow, SyncLog, TestResult } from "./types";
 import type { FollowupEvent, FollowupRow, FollowupSettings } from "./types";
-import type { Access, AccessReviewData, AuditRow, Catalog, ClientRow, MfaEnrollment, Override, Policy, UserRow } from "./types";
+import type {
+  Access, AccessReviewData, AuditRow, Catalog, ClientRow, DisbursementRow, MfaEnrollment, Override, Policy,
+  SoaEvent, SoaExportRow, SoaRow, UserRow,
+} from "./types";
 
 export function createSupabaseApi(): Api {
   const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, {
@@ -208,6 +211,61 @@ export function createSupabaseApi(): Api {
       return rows;
     },
 
+    async listSoas() {
+      return must(await sb.from("soas").select("*").order("released_on", { ascending: false, nullsFirst: true })) as SoaRow[];
+    },
+    async saveSoa(row) {
+      const { id, ...fields } = row;
+      if (id) {
+        const rows = must(await sb.from("soas").update(fields).eq("id", id).select("id"));
+        if (!rows?.length) throw new Error("You do not have permission to edit SOAs.");
+      } else must(await sb.from("soas").insert(fields));
+    },
+    async importSoas(rows) {
+      must(await sb.from("soas").insert(rows));
+      return rows.length;
+    },
+    async deleteSoa(id) {
+      const rows = must(await sb.from("soas").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete SOAs.");
+    },
+    async listSoaEvents(soaId) {
+      return must(await sb.from("soa_events").select("*").eq("soa_id", soaId).order("at", { ascending: false })) as SoaEvent[];
+    },
+    async addSoaEvent(soaId, kind, body) {
+      const { data } = await sb.auth.getUser();
+      must(await sb.from("soa_events").insert({ soa_id: soaId, kind, body, actor_id: data.user?.id }));
+    },
+    async listDisbursements() {
+      return must(await sb.from("disbursements").select("*").order("received_on", { ascending: false })) as DisbursementRow[];
+    },
+    async saveDisbursement(row) {
+      const { id, ...fields } = row;
+      if (id) {
+        const rows = must(await sb.from("disbursements").update(fields).eq("id", id).select("id"));
+        if (!rows?.length) throw new Error("You do not have permission to edit payouts.");
+        return id;
+      }
+      const created = must(await sb.from("disbursements").insert(fields).select("id").single());
+      return created.id as string;
+    },
+    async deleteDisbursement(id) {
+      const rows = must(await sb.from("disbursements").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete payouts.");
+    },
+    async linkSoas(disbursementId, links) {
+      for (const l of links) {
+        const rows = must(await sb.from("soas")
+          .update({ disbursement_id: disbursementId, commission_amount: disbursementId ? l.commission_amount : null })
+          .eq("id", l.soa_id).select("id"));
+        if (!rows?.length) throw new Error("You do not have permission to edit SOAs.");
+      }
+    },
+    async exportSoas() {
+      const rows = must(await sb.rpc("export_soas")) as SoaExportRow[];
+      await sb.rpc("log_export", { p_what: "billing", p_rows: rows.length });
+      return rows;
+    },
     async listFollowups() {
       return must(await sb.from("followups").select("*").order("next_chase_on")) as FollowupRow[];
     },

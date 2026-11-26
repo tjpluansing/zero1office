@@ -1,8 +1,40 @@
 # zero1office
 
-Ask Karla's office app. This first piece is **sign-in and user permissions**:
-login, forced password change, Manage Users, a page and feature permission
-matrix, and an audit log.
+Ask Karla's office app. Built so far:
+
+1. **Sign-in and user permissions**: login, forced password change, Manage Users, a page and feature
+   permission matrix, two-step verification, the agreement, access reviews and an audit log.
+2. **Billing & SOA, the collections tracker**: every SOA from release to client payment, provider receipt
+   and 2307, commission payout, and Karla's receipt to the provider (see below).
+
+3. **AI Office home screen**: the 3D office (`public/office/`) is the first page after sign-in. Nina and
+   Sol work from the real SOA tracker, and the office's "From your trackers" list opens the matching page.
+
+## AI Office
+
+`public/office/index.html` is the 3D office from the prototype, served as a static page and shown in a
+same-origin frame by `src/pages/Office.tsx`. Every minute the app sends it live work built by
+`src/lib/officeLive.ts`; `public/office/live.js` swaps the named agents' sample work for it. Only people with
+`billing.view` get SOA details in the office. The other 36 agents still run on sample work until their
+modules are built (follow-ups, quotes, proposals).
+
+## Billing & SOA
+
+One row per SOA. Its stage is worked out by the database from the dates filled in, so nobody moves cards by hand:
+
+Draft → SOA released, awaiting client payment → Paid, awaiting provider receipt / 2307 → Awaiting commission →
+Commission received, Karla's receipt due → Receipt issued to provider → Closed.
+
+- Stage cards with totals, an aging strip of unpaid SOAs (not yet due, 1–30, 31–60, 61–90, over 90 days past due),
+  and flags for overdue payments, missing 2307s and SOAs stuck too long in a stage (`STUCK_AFTER` in `src/lib/soa.ts`).
+- Per SOA: quick steps (released, paid, receipt in, 2307 in, close), a timeline of stage changes, and follow-up notes.
+  Anyone who can view Billing can log a follow-up, so the assistant works the list without edit rights.
+- **Commission payouts**: record what a provider paid, tick the SOAs it covers (same provider only, with a warning
+  when the SOA commissions don't add up to the payout), copy the details Karla puts on her receipt, and record the
+  receipt number. Only `billing.approve` (Karla) can record or change her receipt.
+- CSV import (with a template) and a logged export. No member names or health details are stored.
+
+Tables: `soas`, `disbursements`, `soa_events` in `supabase/migrations/20261124000008_soa_collections.sql`.
 
 - Frontend: React 18 + TypeScript + Vite + Tailwind (static files)
 - Backend: Supabase (Postgres, Auth, Edge Functions), Singapore region recommended

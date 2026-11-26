@@ -1,5 +1,5 @@
 import {
-  BarChart3, Cable, ClipboardCheck, ClipboardList, FileText, LayoutDashboard, ListTodo, type LucideIcon, Receipt, ScrollText, Settings, Users,
+  BarChart3, Building2, Cable, ClipboardCheck, ClipboardList, FileText, LayoutDashboard, ListTodo, type LucideIcon, Receipt, ScrollText, Settings, Users,
 } from "lucide-react";
 
 export interface NavItem {
@@ -12,6 +12,7 @@ export interface NavItem {
 }
 
 export const NAV: NavItem[] = [
+  { path: "/office", label: "AI Office", icon: Building2, permission: "dashboard.view" },
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
   { path: "/clients", label: "Client Masterlist", icon: ClipboardList, permission: "clients.view" },
   { path: "/quotes", label: "Quoting & Proposals", icon: FileText, permission: "quotes.view" },

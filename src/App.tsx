@@ -1,4 +1,7 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from "react-router-dom";
+
+/** A shareable demo build (npm run build:demo) has no server rewrites, so it routes with #/paths. */
+const Router = import.meta.env.VITE_HASH_ROUTER === "true" ? HashRouter : BrowserRouter;
 import { configMissing } from "./lib/api";
 import { AuthProvider } from "./auth/AuthProvider";
 import { HomeRedirect, RequireAuth, RequirePermission } from "./auth/guards";
@@ -11,7 +14,9 @@ import UsersPage from "./pages/admin/Users";
 import {
   ChangePasswordPage, ForgotPasswordPage, LoginPage, PendingPage, ResetPasswordPage,
 } from "./pages/auth";
+import BillingPage from "./pages/Billing";
 import ClientsPage from "./pages/Clients";
+import OfficePage from "./pages/Office";
 import FollowupsPage from "./pages/Followups";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
@@ -26,7 +31,7 @@ export default function App() {
   }
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <Router>
         <Routes>
           {/* public */}
           <Route path="/login" element={<LoginPage />} />
@@ -41,14 +46,13 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route element={<Layout />}>
               <Route index element={<HomeRedirect />} />
+              <Route path="office" element={<RequirePermission permission="dashboard.view"><OfficePage /></RequirePermission>} />
               <Route path="dashboard" element={<RequirePermission permission="dashboard.view"><DashboardPage /></RequirePermission>} />
               <Route path="clients" element={<RequirePermission permission="clients.view"><ClientsPage /></RequirePermission>} />
               <Route path="quotes" element={<RequirePermission permission="quotes.view">
                 <ModulePage page="quotes" title="Quoting & Proposals" description="Plan comparisons and proposals for HMO, life, pre-need and non-life." />
               </RequirePermission>} />
-              <Route path="billing" element={<RequirePermission permission="billing.view">
-                <ModulePage page="billing" title="Billing & SOA" description="Statements of account and payment follow-ups." />
-              </RequirePermission>} />
+              <Route path="billing" element={<RequirePermission permission="billing.view"><BillingPage /></RequirePermission>} />
               <Route path="followups" element={<RequirePermission permission="followups.view"><FollowupsPage /></RequirePermission>} />
               <Route path="reports" element={<RequirePermission permission="reports.view">
                 <ModulePage page="reports" title="Reports" description="Production, renewals and pipeline reports." />
@@ -65,7 +69,7 @@ export default function App() {
             </Route>
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
     </AuthProvider>
   );
 }

@@ -21,6 +21,7 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
   const [alerts, setAlerts] = useState<IntegrationAlert[]>([]);
   const { pathname } = useLocation();
+  const fullBleed = pathname === "/office";
   const seesIntegrations = can("integrations.view");
   // Re-check on every page change so a fixed problem disappears quickly.
   useEffect(() => {
@@ -50,7 +51,7 @@ export default function Layout() {
     .map((s) => s[0]!.toUpperCase()).join("");
 
   return (
-    <div className="flex min-h-screen">
+    <div className={fullBleed ? "flex h-screen overflow-hidden" : "flex min-h-screen"}>
       <aside className={cx(
         "fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-navy px-4 py-5 transition-transform lg:static lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full",
@@ -89,7 +90,7 @@ export default function Layout() {
       </aside>
       {open && <div className="fixed inset-0 z-20 bg-black/30 lg:hidden" onClick={() => setOpen(false)} />}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b bg-white px-4 py-3 lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Open menu" className="rounded p-1.5 hover:bg-slate-100"><Menu className="h-5 w-5" /></button>
           <Logo />
@@ -118,7 +119,7 @@ export default function Layout() {
             <Link to="/admin/integrations" className="font-semibold underline">Review</Link>
           </div>
         )}
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
+        <main className={fullBleed ? "flex min-h-0 w-full flex-1 flex-col" : "mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8"}>
           <Outlet />
         </main>
       </div>

@@ -9,8 +9,10 @@ import { computeEffective } from "./permissions";
 import type {
   AccessReviewData, IntegrationAlert, IntegrationEvent, IntegrationRow, IntegrationRun, Policy,
   Access, Action, AuditRow, Catalog, ClientRow, Override, Permission, UserRow, UserStatus,
+  DisbursementRow, SoaEvent, SoaRow,
   FollowupEvent, FollowupRow, FollowupSettings,
 } from "./types";
+import { computeStage, STAGES } from "./soa";
 import {
   CLOSED, DEFAULT_SETTINGS, settingsError, MINIMAL_TEXT_ERROR, addBusinessDays, afterChase, daysBetween, hasLongNumber, todayIso,
 } from "./followups";
@@ -81,6 +83,7 @@ interface DemoState {
   users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null; aal: "aal1" | "aal2";
   integrations: (IntegrationRow & { secret: string | null })[];
   reviews: { id: number; reviewed_at: string; reviewer_email: string | null; notes: string }[];
+  soas: SoaRow[]; disbursements: DisbursementRow[]; soaEvents: SoaEvent[];
   events: IntegrationEvent[];
   runs: IntegrationRun[];
   followups: FollowupRow[];
@@ -164,8 +167,55 @@ function seed(): DemoState {
       { id: "c3", full_name: "Mark Santos", company: "Santos Bakery", email: null, phone: "0917 000 0003", insurer: "Oona", product: "Non-Life – Fire", status: "lead", created_at: hoursAgo(20) },
     ],
     audit: [],
+    ...seedBilling(),
     ...seedFollowups(),
   };
+}
+
+const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
+
+/** Sample SOAs in every stage so the tracker can be clicked through. Made-up accounts and amounts. */
+function seedBilling(): Pick<DemoState, "soas" | "disbursements" | "soaEvents"> {
+  const disbursements: DisbursementRow[] = [
+    { id: "d1", provider: "Maxicare", received_on: daysAgo(4), reference: "DV-24-1188", gross_amount: 23500, withholding_amount: 2350,
+      net_amount: 21150, receipt_no: null, receipt_issued_on: null, notes: null, created_at: hoursAgo(96) },
+    { id: "d2", provider: "Intellicare", received_on: daysAgo(30), reference: "CV-0931", gross_amount: 8400, withholding_amount: 840,
+      net_amount: 7560, receipt_no: "AK-0042", receipt_issued_on: daysAgo(28), notes: null, created_at: hoursAgo(720) },
+  ];
+  type S = Partial<SoaRow> & Pick<SoaRow, "id" | "soa_no" | "provider" | "account_name" | "amount">;
+  const base: S[] = [
+    { id: "s1", soa_no: "MX-2026-0412", provider: "Maxicare", account_name: "Dela Cruz Trading", product: "HMO – Corporate", amount: 185000, commission_rate: 0.1, released_on: daysAgo(70), due_on: daysAgo(40) },
+    { id: "s2", soa_no: "MC-88120", provider: "Medicard", account_name: "Santos Bakery", product: "HMO – SME", amount: 64000, commission_rate: 0.1, released_on: daysAgo(20), due_on: daysAgo(5) },
+    { id: "s3", soa_no: "IC-55102", provider: "Intellicare", account_name: "Bayani Logistics", product: "HMO – Corporate", amount: 120000, commission_rate: 0.08, released_on: daysAgo(12), due_on: daysAgo(-18) },
+    { id: "s4", soa_no: "MX-2026-0398", provider: "Maxicare", account_name: "Luzon Dental Group", product: "HMO – Corporate", amount: 96000, commission_rate: 0.1, released_on: daysAgo(50), due_on: daysAgo(20), paid_on: daysAgo(25), payment_ref: "BDO 22831", cwt_applicable: true, cwt_amount: 1920 },
+    { id: "s5", soa_no: "KHL-7781", provider: "KHL", account_name: "Mabuhay Prints", product: "HMO – SME", amount: 38000, commission_rate: 0.1, released_on: daysAgo(40), due_on: daysAgo(10), paid_on: daysAgo(12), provider_receipt_no: "OR 1123", provider_receipt_on: daysAgo(9) },
+    { id: "s6", soa_no: "MX-2026-0377", provider: "Maxicare", account_name: "Rizal Builders", product: "HMO – Corporate", amount: 150000, commission_rate: 0.1, released_on: daysAgo(60), due_on: daysAgo(30), paid_on: daysAgo(32), provider_receipt_no: "OR 88231", provider_receipt_on: daysAgo(28), cwt_applicable: true, cwt_amount: 3000, form_2307_on: daysAgo(20), disbursement_id: "d1", commission_amount: 15000 },
+    { id: "s7", soa_no: "MX-2026-0380", provider: "Maxicare", account_name: "Cebu Seafoods", product: "HMO – SME", amount: 85000, commission_rate: 0.1, released_on: daysAgo(58), due_on: daysAgo(28), paid_on: daysAgo(29), provider_receipt_no: "OR 88240", provider_receipt_on: daysAgo(26), disbursement_id: "d1", commission_amount: 8500 },
+    { id: "s8", soa_no: "IC-54990", provider: "Intellicare", account_name: "Tala Cafe", product: "HMO – SME", amount: 105000, commission_rate: 0.08, released_on: daysAgo(90), due_on: daysAgo(60), paid_on: daysAgo(62), provider_receipt_no: "OR 5521", provider_receipt_on: daysAgo(58), disbursement_id: "d2", commission_amount: 8400 },
+    { id: "s9", soa_no: "FWD-GL-301", provider: "FWD", account_name: "Ana Reyes", product: "Group Life", amount: 42000, commission_rate: 0.15 },
+  ];
+  const soas = base.map((b) => {
+    const row: SoaRow = {
+      client_id: null, product: null, coverage_period: null, released_on: null, due_on: null, paid_on: null, paid_amount: null,
+      payment_ref: null, provider_receipt_no: null, provider_receipt_on: null, cwt_applicable: false, cwt_amount: null,
+      form_2307_on: null, commission_rate: null, commission_expected: null, disbursement_id: null, commission_amount: null,
+      closed_on: null, ghl_link: null, notes: null, stage: "draft", stage_changed_at: "", created_at: hoursAgo(800),
+      updated_at: hoursAgo(1), ...b,
+    };
+    if (row.paid_on && row.paid_amount == null) row.paid_amount = row.amount;
+    if (row.commission_rate != null) row.commission_expected = Math.round(row.amount * row.commission_rate * 100) / 100;
+    row.stage = computeStage(row, !!disbursements.find((d) => d.id === row.disbursement_id)?.receipt_issued_on);
+    const last = [row.form_2307_on, row.provider_receipt_on, row.paid_on, row.released_on].find(Boolean);
+    row.stage_changed_at = row.disbursement_id
+      ? new Date(disbursements.find((d) => d.id === row.disbursement_id)!.received_on).toISOString()
+      : last ? new Date(last).toISOString() : hoursAgo(120);
+    return row;
+  });
+  const soaEvents: SoaEvent[] = soas.map((r, i) => ({ id: i + 1, soa_id: r.id, at: r.stage_changed_at,
+    actor_email: "karla@ask-karla.com", kind: "stage", body: STAGES.find((x) => x.id === r.stage)!.label }));
+  soaEvents.push({ id: 100, soa_id: "s1", at: hoursAgo(50), actor_email: "assistant@ask-karla.com", kind: "follow_up",
+    body: "Emailed accounting, promised payment next week." });
+  return { soas, disbursements, soaEvents };
 }
 
 function seedFollowups(): Pick<DemoState, "followups" | "followupEvents" | "followupSettings"> {
@@ -215,6 +265,7 @@ export function createDemoApi(): Api {
   try {
     state = JSON.parse(localStorage.getItem(KEY) ?? "") as DemoState;
     if (!state?.users || !state.reviews || !state.integrations || !state.events || !state.followups) throw new Error();
+    if (!state.soas) Object.assign(state, seedBilling());
   } catch {
     state = seed();
   }
@@ -255,6 +306,42 @@ export function createDemoApi(): Api {
   };
   const emit = (e: AuthEvent) => listeners.forEach((l) => l(e));
   const temp = () => Math.random().toString(36).slice(2, 10) + "-Z1!";
+
+  const blankSoa = (): SoaRow => ({
+    id: "", soa_no: "", provider: "", account_name: "", amount: 0, client_id: null, product: null, coverage_period: null,
+    released_on: null, due_on: null, paid_on: null, paid_amount: null, payment_ref: null, provider_receipt_no: null,
+    provider_receipt_on: null, cwt_applicable: false, cwt_amount: null, form_2307_on: null, commission_rate: null,
+    commission_expected: null, disbursement_id: null, commission_amount: null, closed_on: null, ghl_link: null, notes: null,
+    stage: "draft", stage_changed_at: "", created_at: new Date().toISOString(), updated_at: "",
+  });
+  const addEvent = (soaId: string, kind: SoaEvent["kind"], body: string) => {
+    state.soaEvents.push({ id: Math.max(0, ...state.soaEvents.map((e) => e.id)) + 1, soa_id: soaId,
+      at: new Date().toISOString(), actor_email: me()?.email ?? null, kind, body });
+  };
+  /** Mirrors the soas triggers: tidy, validate, default, work out the stage, log stage changes. */
+  const writeSoa = (r: SoaRow) => {
+    r.soa_no = r.soa_no.trim(); r.provider = r.provider.trim(); r.account_name = r.account_name.trim();
+    if (!r.soa_no || !r.provider || !r.account_name) throw new Error("SOA number, provider and account are required");
+    if (!(r.amount >= 0)) throw new Error("Amount must be zero or more");
+    if (r.ghl_link && !/^https:\/\//i.test(r.ghl_link)) throw new Error("The GoHighLevel link must start with https://");
+    if (state.soas.some((x) => x.id !== r.id && x.provider.toLowerCase() === r.provider.toLowerCase() && x.soa_no === r.soa_no))
+      throw new Error(`duplicate key: SOA ${r.soa_no} from ${r.provider} already exists`);
+    if (r.commission_expected == null && r.commission_rate != null) r.commission_expected = Math.round(r.amount * r.commission_rate * 100) / 100;
+    if (r.paid_on && r.paid_amount == null) r.paid_amount = r.amount;
+    const d = r.disbursement_id ? state.disbursements.find((x) => x.id === r.disbursement_id) : undefined;
+    if (d && d.provider.toLowerCase() !== r.provider.toLowerCase())
+      throw new Error(`SOA ${r.soa_no} is from ${r.provider}, but this payout is from ${d.provider}`);
+    if (d && r.commission_amount == null) r.commission_amount = r.commission_expected;
+    const old = state.soas.find((x) => x.id === r.id);
+    const stage = computeStage(r, !!d?.receipt_issued_on);
+    r.updated_at = new Date().toISOString();
+    if (!old || old.stage !== stage) {
+      r.stage = stage;
+      r.stage_changed_at = r.updated_at;
+      addEvent(r.id, "stage", STAGES.find((x) => x.id === stage)!.label);
+    }
+    if (old) Object.assign(old, r); else state.soas.push(r);
+  };
 
   return {
     mode: "demo",
@@ -549,6 +636,110 @@ export function createDemoApi(): Api {
     async deleteClient(id) { need("clients.delete"); state.clients = state.clients.filter((c) => c.id !== id); save(); },
     async exportClients() { need("clients.export"); log("export", null, { rows: state.clients.length }, "clients"); save(); return state.clients; },
 
+    async listSoas() { need("billing.view"); await wait(); return state.soas.map((r) => ({ ...r })); },
+    async saveSoa(row) {
+      await wait();
+      if (row.id) {
+        need("billing.edit");
+        const r = state.soas.find((x) => x.id === row.id);
+        if (!r) throw new Error("SOA not found");
+        writeSoa({ ...r, ...row });
+      } else {
+        need("billing.create");
+        writeSoa({ ...blankSoa(), ...row, id: `s-${Date.now()}` });
+      }
+      save();
+    },
+    async importSoas(rows) {
+      await wait();
+      need("billing.create");
+      const before = state.soas.length;
+      const snapshot = JSON.stringify(state);
+      try {
+        rows.forEach((r, i) => writeSoa({ ...blankSoa(), ...r, id: `s-${Date.now()}-${i}` }));
+      } catch (e) {
+        state = JSON.parse(snapshot) as DemoState;
+        throw e;
+      }
+      save();
+      return state.soas.length - before;
+    },
+    async deleteSoa(id) {
+      need("billing.delete");
+      const r = state.soas.find((x) => x.id === id);
+      state.soas = state.soas.filter((x) => x.id !== id);
+      state.soaEvents = state.soaEvents.filter((e) => e.soa_id !== id);
+      log("soa.deleted", id, { soa_no: r?.soa_no, provider: r?.provider, amount: r?.amount }, "soa");
+      save();
+    },
+    async listSoaEvents(soaId) {
+      need("billing.view");
+      return state.soaEvents.filter((e) => e.soa_id === soaId).sort((a, b) => b.at.localeCompare(a.at) || b.id - a.id);
+    },
+    async addSoaEvent(soaId, kind, body) {
+      need("billing.view");
+      addEvent(soaId, kind, body);
+      save();
+    },
+    async listDisbursements() {
+      need("billing.view");
+      return [...state.disbursements].sort((a, b) => b.received_on.localeCompare(a.received_on));
+    },
+    async saveDisbursement(row) {
+      await wait();
+      const old = row.id ? state.disbursements.find((d) => d.id === row.id) : undefined;
+      const receiptChanged = (row.receipt_no ?? null) !== (old?.receipt_no ?? null)
+        || (row.receipt_issued_on ?? null) !== (old?.receipt_issued_on ?? null);
+      if (receiptChanged && !can("billing.approve")) throw new Error("Only someone with Billing approve (Karla) can record her receipt");
+      if (!row.receipt_no !== !row.receipt_issued_on) throw new Error("Enter both the receipt number and its date");
+      if (old) {
+        if (!can("billing.edit") && !can("billing.approve")) need("billing.edit");
+        if (row.provider.toLowerCase() !== old.provider.toLowerCase() && state.soas.some((s) => s.disbursement_id === old.id))
+          throw new Error("Unlink the SOAs before changing this payout's provider");
+        Object.assign(old, row);
+        old.net_amount = (old.gross_amount ?? 0) - (old.withholding_amount ?? 0);
+        state.soas.filter((s) => s.disbursement_id === old.id).forEach((s) => writeSoa(s));
+        save();
+        return old.id;
+      }
+      need("billing.create");
+      const d: DisbursementRow = { reference: null, gross_amount: 0, withholding_amount: 0, receipt_no: null, receipt_issued_on: null,
+        notes: null, ...row, id: `d-${Date.now()}`, net_amount: 0, created_at: new Date().toISOString() };
+      d.net_amount = d.gross_amount - d.withholding_amount;
+      state.disbursements.push(d);
+      save();
+      return d.id;
+    },
+    async deleteDisbursement(id) {
+      need("billing.delete");
+      const d = state.disbursements.find((x) => x.id === id);
+      state.disbursements = state.disbursements.filter((x) => x.id !== id);
+      state.soas.filter((s) => s.disbursement_id === id).forEach((s) => writeSoa({ ...s, disbursement_id: null }));
+      log("disbursement.deleted", id, { provider: d?.provider, gross: d?.gross_amount, receipt_no: d?.receipt_no }, "disbursement");
+      save();
+    },
+    async linkSoas(disbursementId, links) {
+      need("billing.edit");
+      for (const l of links) {
+        const s = state.soas.find((x) => x.id === l.soa_id);
+        if (!s) continue;
+        writeSoa({ ...s, disbursement_id: disbursementId, commission_amount: disbursementId ? l.commission_amount : null });
+      }
+      save();
+    },
+    async exportSoas() {
+      need("billing.export");
+      log("export", null, { rows: state.soas.length }, "billing");
+      save();
+      return state.soas.map((s) => {
+        const d = state.disbursements.find((x) => x.id === s.disbursement_id);
+        return { soa_no: s.soa_no, provider: s.provider, account_name: s.account_name, product: s.product, amount: s.amount,
+          released_on: s.released_on, due_on: s.due_on, paid_on: s.paid_on, provider_receipt_on: s.provider_receipt_on,
+          cwt_applicable: s.cwt_applicable, form_2307_on: s.form_2307_on, commission_expected: s.commission_expected,
+          commission_amount: s.commission_amount, disbursement_ref: d?.reference ?? null, karla_receipt_no: d?.receipt_no ?? null,
+          karla_receipt_on: d?.receipt_issued_on ?? null, closed_on: s.closed_on, stage: s.stage, notes: s.notes };
+      });
+    },
     async listFollowups() {
       need("followups.view");
       // same overdue sweep the database runs on a schedule
