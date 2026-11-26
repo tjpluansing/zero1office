@@ -59,3 +59,24 @@ v80 (built, waiting on the office thread's Google publish): App health part 2 in
 
 - **v88 (2026-11-25):** proposals are now drafted automatically once approved (Maya's check plus your Approve), once per proposal, with "Create draft" kept as a retry. Proposals are Outlook-only from karla@ask-karla.com (Paolo: "All proposals should be sent using karla@ask-karla.com"). Before drafting, the page calls Microsoft 365 `get_me` and flags a draft that landed in someone else's mailbox. The Gmail draft code stays but isn't offered.
 - **v90 (2026-11-25):** the Microsoft 365 connector can't attach files, so each brochure or primer can carry a OneDrive link (Add a link, https only, saved once in the db doc `meta/filelinks`) that goes into the draft body above the sign-off. "Save all files (.zip)" saves the unlinked files, the client's proposal PDF always included, as one zip (JSZip 3.10.1).
+
+## Ask Kara command bar (v92, `kara.js`, appended last)
+
+Paolo, 2026-11-26: "Yes" to a Jarvis-like assistant. Kara (Chief of Staff, id `aria`) gets a command bar on every page:
+the "Ask Kara" button in the top bar, or Ctrl+K / Cmd+K. Type, or press the microphone (dictation capability) and the
+command runs when you stop talking.
+
+- "What's pending" reads the app's own trackers: Approvals, Content approvals, Inbox threads that need your OK, the To do
+  list, Billing & SOA (`zero1office-billing:v1`: overdue SOAs, payouts without Karla's receipt, missing 2307s) and the
+  Calendar for today and tomorrow (plus Google Calendar `list_events`, read-only, only if it was switched on there).
+  Each row opens its page.
+- "Open billing" opens a page (matched against the live NAV labels plus aliases). "Ask Maya to …" hands a task to that
+  AI employee with the page's `giveTask`. "Add to do: …" adds to the To do list. Kara shows the step and waits for
+  Do it / Enter (opening a page from a typed command runs straight away).
+- Anything else goes to Claude (sample capability) with counts and page and employee names only, never client names
+  or details. Claude's suggested action still waits for Do it.
+- Guardrails: Kara never sends, posts or pays. A task that mentions sending or emailing says it waits in Approvals for
+  Karla. The assistant account can only hand out follow-ups. Every action is logged in this browser
+  (`zero1office:kara:log:v1`, last 200, the Log tab) and in Kara's feed in the office.
+- "Read replies aloud" (off by default) uses the tts capability if declared, else the browser's speech.
+- No capability changes: it uses sample, dictation and mcp (Google Calendar list_events), all already declared.
