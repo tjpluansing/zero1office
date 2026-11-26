@@ -224,6 +224,36 @@
     return { agents: { pia: pia }, items: items };
   });
 
+  /* ---- Lia (Inbox) and Bea (Messenger/DMs): unread GoHighLevel conversations, read-only, every 10 minutes ---- */
+  var C = { list: null, at: 0, busy: false };
+  function loadConvs() {
+    var cl = window.claude; if (C.busy || Date.now() - C.at < 10 * 60000 || !cl || !cl.use) return;
+    C.busy = true;
+    cl.use("mcp").then(function (m) {
+      if (!m) throw { code: "unavailable_here" };
+      return m.callTool("GHL", "execute_operation", { operationId: "search-conversation", reason: "Lia and Bea check unread messages", params: { query: { limit: 50, status: "unread" } } });
+    }).then(function (r) { C.busy = false; C.at = Date.now(); C.list = ghlData(r).conversations || []; }, function () { C.busy = false; C.at = Date.now(); });
+  }
+  var DM = /^TYPE_(FACEBOOK|INSTAGRAM|WHATSAPP|GMB|LIVE_CHAT)$/;
+  function convAgent(id, isDm, label, page) {
+    return function () {
+      loadConvs();
+      if (!C.list) return {};
+      var un = C.list.filter(function (c) { return (c.unreadCount || 0) > 0 && !/^\(example\)/i.test(String(c.fullName || c.contactName || "")) && DM.test(c.lastMessageType || "") === isDm; });
+      var who = function (c) { return c.fullName || c.contactName || "a contact"; };
+      var ch = function (c) { return String(c.lastMessageType || "").replace("TYPE_", "").toLowerCase().replace(/_/g, " "); };
+      var a = {
+        now: un.length ? "Answering " + plural(un.length, "unread " + label) : "No unread " + label + "s",
+        tasks: un.slice(0, 6).map(function (c) { return "Reply to " + who(c) + " (" + ch(c) + ", " + c.unreadCount + " unread)"; }),
+        k: "Unread " + label + "s", kc: un.length, kg: Math.max(1, un.length),
+      };
+      var out = {}; out[id] = a;
+      return { agents: out, items: un.length ? [{ who: id, title: plural(un.length, "unread " + label), tone: "info", badge: isDm ? "DMs" : "Inbox", sub: un.slice(0, 2).map(who).join(", "), path: "view:" + page }] : [] };
+    };
+  }
+  list.push(convAgent("lia", false, "message", "inbox"));
+  list.push(convAgent("bea", true, "DM", "inbox"));
+
   /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
   var others = list.slice();
   list.push(function () {
