@@ -13,6 +13,7 @@
   function daily() { return okT(st().reportTime) ? st().reportTime : "19:00"; }
   function morning() { return okT(st().morningTime) ? st().morningTime : "08:00"; }
   function mOn() { return st().morningOn !== false; }
+  function dOn() { return st().dailyOn !== false; }
   function label(t) { var h = +t.slice(0, 2), m = t.slice(3); return (h % 12 || 12) + ":" + m + " " + (h < 12 ? "AM" : "PM"); }
   function short(t) { var h = +t.slice(0, 2), m = t.slice(3); return (h % 12 || 12) + (m === "00" ? "" : ":" + m) + " " + (h < 12 ? "AM" : "PM"); }
   function until(t) {
@@ -22,23 +23,25 @@
       var m = Math.round((x - d) / 60000); return Math.floor(m / 60) + "h " + (m % 60) + "m";
     } catch (err) { return ""; }
   }
-  function publish() { window.Z1_REPORTS = { daily: daily(), morning: morning(), morningOn: mOn() }; }
+  function publish() { window.Z1_REPORTS = { daily: daily(), morning: morning(), morningOn: mOn(), dailyOn: dOn() }; }
 
   /* Kara's instructions and card follow the chosen times. */
   function syncKara() {
     var k = (S.team || []).filter(function (e) { return e.id === "aria"; })[0]; if (!k) return false;
     var before = JSON.stringify([k.p, k.desc, k.tasks]), D = short(daily()), M = short(morning());
     if (typeof k.p === "string") {
-      k.p = k.p.replace(/Every day at [^,]*? Manila time, send Paolo a short report/, "Every day at " + D + " Manila time, send Paolo a short report");
+      // Daily report sentence: drop it when off, put it back (with the chosen time) when on.
+      k.p = k.p.replace(/ ?Every day at [^,]*? Manila time, send Paolo a short report: [^.]*\./, "");
+      if (dOn()) k.p = k.p.replace(/(Be calm and brief)/, "Every day at " + D + " Manila time, send Paolo a short report: what got done, what needs his OK, and what is at risk. $1");
       k.p = k.p.replace(/ ?Every morning at [^.]*? Manila time, send Paolo a short morning report[^.]*\./, "");
-      if (mOn()) k.p = k.p.replace("send Paolo a short report", "send Paolo a short report").replace(/(Be calm and brief)/, "Every morning at " + M + " Manila time, send Paolo a short morning report: what is waiting on him today, renewals this week and missing receipts. $1");
+      if (mOn()) k.p = k.p.replace(/(Every day at [^,]*? Manila time, send Paolo a short report|Be calm and brief)/, "Every morning at " + M + " Manila time, send Paolo a short morning report: what is waiting on him today, renewals this week and missing receipts. $1");
     }
     if (typeof k.desc === "string") k.desc = k.desc.replace(/sends your [0-9: APM]+ daily report/, "sends your " + D + " daily report");
     if (Array.isArray(k.tasks)) k.tasks = k.tasks.map(function (t) { return t.replace(/Write the [0-9: APM]+ wrap-up/, "Write the " + D + " wrap-up"); });
     return JSON.stringify([k.p, k.desc, k.tasks]) !== before;
   }
 
-  function sw(on) { return '<button class="switch" role="switch" aria-checked="' + on + '" aria-label="Kara\'s morning report" id="z1MornOn"></button>'; }
+  function sw(on, id, lbl) { return '<button class="switch" role="switch" aria-checked="' + on + '" aria-label="' + lbl + '" id="' + id + '"></button>'; }
   function tin(id, v, lbl, dis) { return '<input type="time" class="inp" id="' + id + '" value="' + v + '" aria-label="' + lbl + '" style="width:auto"' + (dis ? " disabled" : "") + ">"; }
 
   var origSettings = VIEWS.settings;
@@ -48,8 +51,9 @@
     if (oldRow < 0) oldRow = h.indexOf("<b>Kara\\'s daily report</b>");
     var rows =
       '<div class="setrow"><div><b>Kara\'s morning report</b><div class="muted small">A short start-of-day report: what\'s waiting on you, renewals this week and missing receipts. ' +
-      (mOn() ? "Next one in " + until(morning()) + "." : "Off.") + '</div></div><span style="display:flex;gap:10px;align-items:center">' + tin("z1MornT", morning(), "Morning report time", !mOn()) + sw(mOn()) + "</span></div>" +
-      '<div class="setrow"><div><b>Kara\'s daily report</b><div class="muted small">When the end-of-day report arrives. Next one in ' + until(daily()) + ".</div></div>" + tin("z1DailyT", daily(), "Daily report time") + "</div>";
+      (mOn() ? "Next one in " + until(morning()) + "." : "Off.") + '</div></div><span style="display:flex;gap:10px;align-items:center">' + tin("z1MornT", morning(), "Morning report time", !mOn()) + sw(mOn(), "z1MornOn", "Kara's morning report") + "</span></div>" +
+      '<div class="setrow"><div><b>Kara\'s daily report</b><div class="muted small">The end-of-day report: what got done, what needs your OK and what is at risk. ' +
+      (dOn() ? "Next one in " + until(daily()) + "." : "Off.") + '</div></div><span style="display:flex;gap:10px;align-items:center">' + tin("z1DailyT", daily(), "Daily report time", !dOn()) + sw(dOn(), "z1DailyOn", "Kara's daily report") + "</span></div>";
     if (oldRow > -1) {
       var s = h.lastIndexOf('<div class="setrow">', oldRow), e = h.indexOf("</span></div>", oldRow);
       if (s > -1 && e > -1) return h.slice(0, s) + rows + h.slice(e + "</span></div>".length);
@@ -64,8 +68,9 @@
     if (t.id === "z1MornT" && okT(t.value)) { st().morningTime = t.value; saved("Kara's morning report moved to " + label(t.value)); }
   });
   document.addEventListener("click", function (ev) {
-    var b = ev.target.closest && ev.target.closest("#z1MornOn"); if (!b) return;
-    st().morningOn = !mOn(); saved(mOn() ? "Kara's morning report is on at " + label(morning()) : "Kara's morning report is off");
+    var b = ev.target.closest && ev.target.closest("#z1MornOn, #z1DailyOn"); if (!b) return;
+    if (b.id === "z1MornOn") { st().morningOn = !mOn(); saved(mOn() ? "Kara's morning report is on at " + label(morning()) : "Kara's morning report is off"); }
+    else { st().dailyOn = !dOn(); saved(dOn() ? "Kara's daily report is on at " + label(daily()) : "Kara's daily report is off"); }
   });
 
   /* Office home panel (inside the 3D office frame): both reports, with the chosen times. */
@@ -101,14 +106,17 @@
     if (V.home.__z1Rep) return;
     var base = V.home;
     var wrapped = function () {
-      var h = base.apply(this, arguments).replace("Every day at 7:00 PM", "Every day at " + label(daily()));
-      if (!mOn()) return h;
+      var h = withMorning(base.apply(this, arguments).replace("Every day at 7:00 PM", "Every day at " + label(daily())));
+      return dOn() ? h : h.replace(/<div class="rep"><div[^>]*><b>Kara's daily report<\/b>[\s\S]*?<\/span>(<ul>[\s\S]*?<\/ul>)?<\/div>/, "");
+    };
+    function withMorning(h) {
+      if (!mOn() || h.indexOf("data-z1morn") > -1) return h; // already added by an inner copy of this wrapper
       var open = !!w.__z1MornOpen, at = h.indexOf('<div class="rep">');
       var card = '<div class="rep"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Kara\'s morning report</b><button class="btn sm" data-z1morn="1">' + (open ? "Hide" : "Preview") + "</button></div>" +
         '<span class="muted small">Every day at ' + label(morning()) + " · in " + until(morning()) + "</span>" +
         (open ? "<ul>" + morningItems(w).map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>" : "") + "</div>";
       return at > -1 ? h.slice(0, at) + card + h.slice(at) : h;
-    };
+    }
     wrapped.__z1Rep = true;
     V.home = wrapped;
     try { if (w.eval("S.panel && S.panel.v === 'home'")) w.renderPanel(true); } catch (err) { /* not ready yet */ }
