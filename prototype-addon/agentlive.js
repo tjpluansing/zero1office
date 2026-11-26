@@ -51,4 +51,17 @@
     var items = nToday ? [{ who: "dom", title: plural(nToday, "event") + " left today", tone: "info", badge: "Calendar", sub: "Next: " + label(evs[0]), path: "view:calendar" }] : [];
     return { agents: { dom: dom }, items: items };
   });
+  /* ---- Ivan, IT & App Checker: the App health checks that are failing right now ---- */
+  list.push(function () {
+    if (typeof healthChecks !== "function") return {};
+    var all = healthChecks() || [], bad = all.filter(function (c) { return !c[1]; });
+    var ivan = {
+      now: bad.length ? "Fixing " + plural(bad.length, "failed check") + ": " + bad[0][0] : "All " + all.length + " app health checks pass",
+      say: bad.length ? plural(bad.length, "health check") + " failing." : undefined,
+      tasks: bad.slice(0, 6).map(function (c) { return "Fix " + c[0] + (c[2] ? ": " + String(c[2]).replace(/<[^>]*>/g, "").slice(0, 90) : ""); }),
+      k: "Health checks passing", kc: all.length - bad.length, kg: Math.max(1, all.length),
+    };
+    var items = bad.length ? [{ who: "ivan", title: plural(bad.length, "app health check") + " failing", tone: "need", badge: "Health", sub: bad.map(function (c) { return c[0]; }).slice(0, 3).join(", "), path: "view:health" }] : [];
+    return { agents: { ivan: ivan }, items: items };
+  });
 })();
