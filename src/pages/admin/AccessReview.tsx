@@ -10,14 +10,14 @@ const LETTER: Record<string, string> = { view: "V", create: "C", edit: "E", dele
 const DAY = 86_400_000;
 const SHORT: Record<string, string> = {
   dashboard: "Dash", clients: "Clients", quotes: "Quotes", billing: "Billing", reports: "Reports",
-  admin_users: "Users", admin_settings: "Settings", audit_log: "Audit",
+  admin_users: "Users", admin_settings: "Settings", integrations: "Integr.", audit_log: "Audit",
 };
 
 function flags(u: ReviewUser): string[] {
   const f: string[] = [];
   if (u.status === "active" && (!u.last_login_at || Date.now() - new Date(u.last_login_at).getTime() > 30 * DAY))
     f.push(u.last_login_at ? "No sign-in for 30+ days" : "Never signed in");
-  const sensitive = u.permissions.some((k) => /^(admin_users|admin_settings)\./.test(k) || k.endsWith(".export"));
+  const sensitive = u.permissions.some((k) => /^(admin_users|admin_settings|integrations)\./.test(k) || k.endsWith(".export"));
   if (sensitive && !u.mfa) f.push("Admin or export without two-step");
   if (u.overrides > 0) f.push(`${u.overrides} custom permission${u.overrides === 1 ? "" : "s"}`);
   if (u.status === "pending") f.push("Waiting for approval");

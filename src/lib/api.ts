@@ -1,7 +1,8 @@
 import type {
-  AccessReviewData, MfaEnrollment, Policy,
+  AccessReviewData, IntegrationRow, MfaEnrollment, Policy, SyncLog, TestResult, IntegrationAlert,
   Access, AuditRow, Catalog, ClientRow, CreateUserInput, Override, UserRow, UserStatus,
   DisbursementInput, DisbursementRow, SoaEvent, SoaExportRow, SoaInput, SoaRow,
+  FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
 import { createDemoApi } from "./demoApi";
@@ -42,6 +43,18 @@ export interface Api {
   resetMfa(userId: string): Promise<void>;
   getAccessReview(): Promise<AccessReviewData>;
   completeAccessReview(notes: string): Promise<void>;
+  listIntegrations(): Promise<IntegrationRow[]>;
+  saveIntegration(id: string, config: IntegrationRow["config"], secret: string | null, enabled: boolean): Promise<void>;
+  testIntegration(id: string): Promise<TestResult>;
+  disconnectIntegration(id: string): Promise<void>;
+  /** Where GHL should send webhooks, or null when there is no backend (demo). */
+  webhookUrl(id: string): string | null;
+  /** Creates or replaces the webhook secret. The secret is returned once and never again. */
+  newWebhookSecret(id: string): Promise<string>;
+  getSyncLog(id: string): Promise<SyncLog>;
+  retryEvent(eventId: number): Promise<void>;
+  /** Problems with connected services; empty for people without integrations.view. */
+  getIntegrationAlerts(): Promise<IntegrationAlert[]>;
   listAudit(limit?: number): Promise<AuditRow[]>;
   exportAudit(): Promise<AuditRow[]>;
 
@@ -65,6 +78,21 @@ export interface Api {
   /** Point the given SOAs at a payout (or unlink with null), with the commission each one earned. */
   linkSoas(disbursementId: string | null, links: { soa_id: string; commission_amount: number | null }[]): Promise<void>;
   exportSoas(): Promise<SoaExportRow[]>;
+  // --- follow-up queue (Felix + assistant) ---
+  listFollowups(): Promise<FollowupRow[]>;
+  listFollowupEvents(id: string): Promise<FollowupEvent[]>;
+  getFollowupSettings(): Promise<FollowupSettings>;
+  /** Chase rules. Karla (followups.approve) or admins (admin_settings.edit). */
+  saveFollowupSettings(s: FollowupSettings): Promise<void>;
+  /** Creates (no id) or edits the details of an item. Status and counters have their own calls. */
+  saveFollowup(row: FollowupInput): Promise<void>;
+  /** The assistant sent a chase. Escalates to Karla after the max number of tries. */
+  logFollowupChase(id: string, channel: FollowupChannel, note: string | null, fromFelix: boolean): Promise<void>;
+  /** Waived / cancelled, and reopening those, need followups.approve. */
+  setFollowupStatus(id: string, status: FollowupStatus, note: string | null): Promise<void>;
+  addFollowupNote(id: string, note: string): Promise<void>;
+  deleteFollowup(id: string): Promise<void>;
+  exportFollowups(): Promise<FollowupRow[]>;
 }
 
 export const isDemo = import.meta.env.VITE_DEMO_MODE === "true";

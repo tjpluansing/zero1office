@@ -86,6 +86,72 @@ export interface AccessReviewData {
   users: ReviewUser[];
 }
 
+export type IntegrationId = "ghl" | "m365" | "anthropic";
+
+export interface IntegrationRow {
+  id: IntegrationId;
+  name: string;
+  enabled: boolean;
+  config: Record<string, string | number | boolean>;
+  secret_hint: string | null;
+  status: "not_connected" | "untested" | "connected" | "error" | "paused";
+  last_tested_at: string | null;
+  last_test_ok: boolean | null;
+  last_error: string | null;
+  last_details: Record<string, unknown>;
+  secret_set_at: string | null;
+  updated_at: string;
+  webhook_secret_hint: string | null;
+  webhook_secret_set_at: string | null;
+  last_event_at: string | null;
+}
+
+export interface IntegrationEvent {
+  id: number;
+  event_type: string;
+  summary: string | null;
+  verified_by: "ghl_signature" | "webhook_secret" | "test";
+  status: "pending" | "retrying" | "done" | "ignored" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  result: string | null;
+  client_id: string | null;
+  received_at: string;
+  processed_at: string | null;
+}
+
+export interface IntegrationRun {
+  id: number;
+  trigger: "webhook" | "schedule" | "manual";
+  started_at: string;
+  finished_at: string | null;
+  processed: number;
+  succeeded: number;
+  ignored: number;
+  will_retry: number;
+  failed: number;
+}
+
+export interface IntegrationAlert {
+  alert_key: string;
+  integration_id: IntegrationId;
+  severity: "red" | "amber";
+  title: string;
+  detail: string;
+}
+
+export interface SyncLog {
+  events: IntegrationEvent[];
+  runs: IntegrationRun[];
+}
+
+export interface TestResult {
+  ok: boolean;
+  error?: string;
+  details?: Record<string, unknown>;
+}
+
 export interface UserRow {
   id: string;
   email: string;
@@ -203,3 +269,54 @@ export interface SoaEvent {
 }
 
 export type SoaExportRow = Record<string, string | number | boolean | null>;
+
+// --- follow-up queue ---
+export type FollowupKind = "document" | "signature" | "payment" | "insurer_reply" | "client_reply" | "other";
+export type FollowupParty = "client" | "insurer";
+export type FollowupChannel = "email" | "viber" | "messenger" | "phone" | "sms" | "insurer_portal";
+export type FollowupStatus = "open" | "waiting" | "escalated" | "done" | "waived" | "cancelled";
+
+export interface FollowupRow {
+  id: string;
+  title: string;
+  kind: FollowupKind;
+  party: FollowupParty;
+  client_id: string | null;
+  insurer: string | null;
+  reference: string | null;
+  channel: FollowupChannel;
+  status: FollowupStatus;
+  due_on: string | null;        // yyyy-mm-dd
+  next_chase_on: string;        // yyyy-mm-dd
+  attempts: number;
+  last_chased_at: string | null;
+  escalation_reason: string | null;
+  felix_drafts: boolean;
+  assignee_id: string | null;
+  notes: string | null;
+  ghl_link: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+export type FollowupInput = Partial<Pick<FollowupRow,
+  "id" | "kind" | "party" | "client_id" | "insurer" | "reference" | "channel" | "due_on" | "next_chase_on"
+  | "felix_drafts" | "notes" | "ghl_link">> & { title: string };
+
+export interface FollowupEvent {
+  id: number;
+  followup_id: string;
+  at: string;
+  actor_label: string;
+  kind: "created" | "chased" | "status" | "escalated" | "note" | "edited";
+  channel: string | null;
+  note: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface FollowupSettings {
+  chase_every_days: number;
+  max_attempts: number;
+  escalate_overdue_days: number;
+}

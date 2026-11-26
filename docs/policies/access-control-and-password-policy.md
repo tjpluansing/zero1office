@@ -16,7 +16,7 @@ This policy covers zero1office and every system that holds client personal data 
 |---|---|---|
 | Super Admin | Paolo (IT), Karla (CEO) | Everything, including users, settings and the audit log. At least two people, always. |
 | Agent | Licensed agents | Clients, quotes, billing and reports, including approvals and exports. No user management. |
-| Assistant | Assistants, OJT | View and update clients and quotes, view billing and reports. No deletes, exports or approvals unless granted for a reason. |
+| Assistant | Assistants, OJT | Follow up pending items: add and update clients, draft quotes, see billing status. No reports, deletes, exports, approvals or admin unless granted for a reason. |
 | No access | New Microsoft sign-ins | Nothing until a Super Admin approves them. |
 
 Any change from a preset is made in Manage Users, is shown as "custom", and is recorded in the audit log. The reason should be noted in the next access review.
