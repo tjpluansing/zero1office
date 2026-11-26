@@ -78,4 +78,23 @@
     var items = due.length ? [{ who: "felix", title: plural(due.length, "proposal") + " to follow up", tone: "info", badge: "Follow-up", sub: due.slice(0, 2).map(function (x) { return x.co + " " + x.type; }).join(", "), path: "view:propgen" }] : [];
     return { agents: { felix: felix }, items: items };
   });
+  /* ---- Vince, Reels & Video Editor: raw clips in Files > Raw videos that have no edited reel in Files > Reels ---- */
+  // Vince was Offline in the sample data. Paolo asked for every agent to be live, so he comes back once.
+  try { var v0 = typeof byId === "function" && byId("vince"); if (v0 && v0.s === "offline" && !S.data.vinceBack) { v0.s = "idle"; S.data.vinceBack = true; save(); } } catch (err) { /* optional */ }
+  list.push(function () {
+    var F = window.Z1Files; if (!F || !F.rows || !F.ready || !F.ready()) return {};
+    var raw = F.folder("Raw videos", "rawvideos"), reels = F.folder("Reels", "reels");
+    var isVid = function (d) { return /^video\//.test(d.mime || "") || /\.(mp4|mov|m4v|webm)$/i.test(d.name || ""); };
+    var base = function (n) { return String(n || "").replace(/\.[^.]+$/, "").toLowerCase(); };
+    var rows = F.rows(), done = rows.filter(function (d) { return d.folder === reels; }).map(function (d) { return base(d.name); });
+    var todo = rows.filter(function (d) { return d.folder === raw && isVid(d); })
+      .filter(function (d) { var b = base(d.name); return !done.some(function (r) { return r.indexOf(b) > -1; }); });
+    var vince = {
+      now: todo.length ? "Editing " + plural(todo.length, "raw clip") + " into reels, next: " + todo[0].name : "No raw clips waiting. Upload them to Files > Raw videos",
+      tasks: todo.slice(0, 6).map(function (d) { return "Edit " + d.name + " into a reel (cuts, captions, end card)"; }),
+      k: "Clips edited into reels", kc: done.length, kg: Math.max(1, done.length + todo.length),
+    };
+    var items = todo.length ? [{ who: "vince", title: plural(todo.length, "raw clip") + " to edit", tone: "info", badge: "Reels", sub: todo[0].name, path: "view:files" }] : [];
+    return { agents: { vince: vince }, items: items };
+  });
 })();
