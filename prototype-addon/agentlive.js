@@ -133,4 +133,19 @@
     var items = todo.length ? [{ who: "tess", title: plural(todo.length, "new lead") + " to message", tone: "info", badge: "Outreach", sub: todo.slice(0, 2).map(nm).join(", "), path: "view:leads" }] : [];
     return { agents: { tess: tess }, items: items };
   });
+  /* ---- Owen, Renewals Manager: Numbers > Renewals, starting 60 days before each date ---- */
+  list.push(function () {
+    var RN = window.Z1Renewals; if (!RN) return {};
+    var due = RN.open().filter(function (r) { return RN.daysTo(r.date) <= 60; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+    var all = (S.data.renewals || []).length, late = due.filter(function (r) { return RN.daysTo(r.date) < 0; });
+    var when = function (r) { var n = RN.daysTo(r.date); return n < 0 ? (-n) + " d overdue" : n === 0 ? "today" : "in " + n + " d"; };
+    var owen = {
+      now: due.length ? "Starting the " + due[0].acct + " renewal (" + due[0].ins + ", " + when(due[0]) + ")" : all ? "No renewal within 60 days" : "Waiting for renewals in Numbers > Renewals",
+      say: late.length ? plural(late.length, "renewal") + " overdue." : undefined,
+      tasks: due.slice(0, 6).map(function (r) { return "Renew " + r.acct + " with " + r.ins + " (" + RN.nice(r.date) + ", " + when(r) + ")"; }),
+      k: "Renewals done", kc: all - RN.open().length, kg: Math.max(1, all),
+    };
+    var items = due.length ? [{ who: "owen", title: plural(due.length, "renewal") + " within 60 days", tone: late.length ? "need" : "info", badge: late.length ? late.length + " overdue" : "Renewals", sub: due.slice(0, 2).map(function (r) { return r.acct + " " + when(r); }).join(", "), path: "view:renewals" }] : [];
+    return { agents: { owen: owen }, items: items };
+  });
 })();
