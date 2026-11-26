@@ -197,19 +197,27 @@
     var items = wait.length ? [{ who: "dante", title: plural(wait.length, "post") + " waiting for your OK", tone: "need", badge: "Content", sub: wait.slice(0, 2).map(function (x) { return x.title; }).join(", "), path: "view:content" }] : [];
     return { agents: { dante: dante }, items: items };
   });
-  /* ---- Maya, Proposals Lead: proposals from the Proposal generator waiting for Karla or sent back with changes ---- */
+  /* ---- Proposal writers (Maya, Quinn, Jade, Hana, Theo): Proposal generator proposals waiting for Karla or sent back ---- */
   function pgAps() { return (S.data.approvals || []).filter(function (a) { return a.pg; }); }
-  list.push(function () {
-    var aps = pgAps(), wait = aps.filter(function (a) { return a.state === "waiting"; }), fix = aps.filter(function (a) { return a.state === "changes"; });
-    var maya = {
-      now: fix.length ? "Fixing " + plural(fix.length, "proposal") + " Karla sent back" : wait.length ? plural(wait.length, "proposal") + " waiting for Karla's OK" : aps.length ? "No proposal waiting" : "Waiting for a proposal from the Proposal generator",
-      tasks: fix.map(function (a) { return "Redo " + a.title + " with Karla's changes"; }).concat(wait.map(function (a) { return "Get Karla's OK on " + a.title; })).slice(0, 6),
-      k: "Proposals approved", kc: aps.filter(function (a) { return a.state === "approved" || a.state === "sent"; }).length, kg: Math.max(1, aps.length),
+  // Each proposal writer (Maya, Quinn, Jade, Hana, Theo...) works the proposals the generator assigned to them.
+  // Maya also takes any proposal whose writer is no longer on the team.
+  function propAgent(id) {
+    return function () {
+      var team = (S.team || []).filter(function (e) { return e.d === "Proposals"; }).map(function (e) { return e.id; });
+      var aps = pgAps().filter(function (a) { return a.who === id || (id === "maya" && team.indexOf(a.who) < 0); });
+      var wait = aps.filter(function (a) { return a.state === "waiting"; }), fix = aps.filter(function (a) { return a.state === "changes"; });
+      var e = typeof byId === "function" ? byId(id) : null, what = e && e.r ? e.r.replace(/^.*·\s*/, "") : "";
+      var ag = {
+        now: fix.length ? "Fixing " + plural(fix.length, "proposal") + " Karla sent back" : wait.length ? plural(wait.length, "proposal") + " waiting for Karla's OK" : aps.length ? "No proposal waiting" : "Waiting for a proposal from the Proposal generator",
+        tasks: fix.map(function (a) { return "Redo " + a.title + " with Karla's changes"; }).concat(wait.map(function (a) { return "Get Karla's OK on " + a.title; })).slice(0, 6),
+        k: "Proposals approved", kc: aps.filter(function (a) { return a.state === "approved" || a.state === "sent"; }).length, kg: Math.max(1, aps.length),
+      };
+      var out = {}; out[id] = ag;
+      // Waiting proposals already show in Approvals; the office row only flags ones sent back.
+      return { agents: out, items: fix.length ? [{ who: id, title: plural(fix.length, "proposal") + " sent back for changes", tone: "info", badge: "Proposals", sub: fix.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [] };
     };
-    // Waiting proposals already show in Approvals; the office row only flags ones sent back.
-    var items = fix.length ? [{ who: "maya", title: plural(fix.length, "proposal") + " sent back for changes", tone: "info", badge: "Proposals", sub: fix.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [];
-    return { agents: { maya: maya }, items: items };
-  });
+  }
+  ["maya", "quinn", "jade", "hana", "theo"].forEach(function (id) { list.push(propAgent(id)); });
 
   /* ---- Pia, Compliance Checker: waiting proposals whose checks flagged something to watch ---- */
   list.push(function () {
