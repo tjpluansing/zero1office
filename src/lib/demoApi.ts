@@ -82,7 +82,7 @@ const catalog: Catalog = {
   },
 };
 
-interface DemoUser extends Omit<UserRow, "override_count"> { overrides: Override[]; policy: string | null; mfa: boolean }
+interface DemoUser extends Omit<UserRow, "override_count"> { overrides: Override[]; policy: string | null; mfa: boolean; job_title?: string; phone?: string }
 interface DemoState {
   users: DemoUser[]; clients: ClientRow[]; audit: AuditRow[]; sessionUserId: string | null; aal: "aal1" | "aal2";
   integrations: (IntegrationRow & { secret: string | null })[];
@@ -118,7 +118,7 @@ const POLICY: Policy = {
 };
 const sensitive = (k: string) => /^(admin_users|admin_settings|integrations)\./.test(k) || k.endsWith(".export");
 
-const KEY = "z1-demo-state-v4";
+const KEY = "z1-demo-state-v5";
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
 const ev = (id: number, event_type: string, summary: string | null, status: IntegrationEvent["status"], attempts: number,
   x: { result?: string; last_error?: string; next?: number; by?: IntegrationEvent["verified_by"] } = {}): IntegrationEvent => ({
@@ -158,10 +158,8 @@ function seed(): DemoState {
       { id: 1, trigger: "webhook", started_at: hoursAgo(5), finished_at: hoursAgo(5), processed: 3, succeeded: 2, ignored: 0, will_retry: 0, failed: 1 },
     ],
     users: [
-      u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true, policy: null }),
-      u("u-karla", "karla@ask-karla.com", "Karla", "agent", "active", 3, {
-        overrides: [{ permission_key: "admin_users.view", effect: "grant" }],
-      }),
+      u("u-paolo", "paolo@ask-karla.com", "Paolo", "super_admin", "active", 0.2, { must_change_password: true, policy: null, job_title: "IT and lead generation" }),
+      u("u-karla", "karla@ask-karla.com", "Karla", "super_admin", "active", 3, { job_title: "Licensed agent" }),
       u("u-assistant", "assistant@ask-karla.com", "New Assistant", "assistant", "active", null, {
         overrides: [{ permission_key: "clients.export", effect: "grant" }],
       }),
@@ -504,6 +502,22 @@ export function createDemoApi(): Api {
         policy_required: u.policy === POLICY.version ? null : POLICY.version, aal: state.aal, mfa_enrolled: u.mfa,
         last_login_at: u.last_login_at, idle_minutes: 30, permissions: [...sess].sort(),
         mfa_locked: [...effective(u)].filter((k) => !sess.has(k)).sort() };
+    },
+    async getMyProfile() {
+      const u = me();
+      if (!u) return null;
+      const role = catalog.roles.find((r) => r.id === u.role_id)!;
+      return { id: u.id, email: u.email, full_name: u.full_name, job_title: u.job_title ?? "", phone: u.phone ?? "",
+        role_id: u.role_id, role_name: role.name, is_super: isSuper(u), last_login_at: u.last_login_at, created_at: u.created_at };
+    },
+    async updateMyProfile(patch) {
+      const u = me();
+      if (!u) throw new Error("Not signed in");
+      if (patch.full_name.length > 80 || patch.job_title.length > 80) throw new Error("Keep the name and job title under 80 characters.");
+      if (!/^[0-9+() -]{0,20}$/.test(patch.phone)) throw new Error("Use only numbers, spaces, + and brackets for the mobile number.");
+      Object.assign(u, patch);
+      log("profile.updated", u.id, { fields: Object.keys(patch) }, "profile");
+      save();
     },
     async getPolicy() { return POLICY; },
     async acceptPolicy(version) {

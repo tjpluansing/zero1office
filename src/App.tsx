@@ -19,6 +19,7 @@ import ClientsPage from "./pages/Clients";
 import OfficePage from "./pages/Office";
 import FollowupsPage from "./pages/Followups";
 import QuotesPage from "./pages/Quotes";
+import ProfilePage from "./pages/Profile";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
                 <ModulePage page="reports" title="Reports" description="Production, renewals and pipeline reports." />
               </RequirePermission>} />
               <Route path="admin/users" element={<RequirePermission permission="admin_users.view"><UsersPage /></RequirePermission>} />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="security" element={<SecurityPage />} />
               <Route path="admin/access-review" element={<RequirePermission permission="admin_users.view"><AccessReviewPage /></RequirePermission>} />
               <Route path="admin/integrations" element={<RequirePermission permission="integrations.view"><IntegrationsPage /></RequirePermission>} />

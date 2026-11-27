@@ -4,7 +4,7 @@ import type {
   DisbursementInput, DisbursementRow, SoaEvent, SoaExportRow, SoaInput, SoaRow,
   FollowupChannel, FollowupEvent, FollowupInput, FollowupRow, FollowupSettings, FollowupStatus,
   ProductLine, QuoteAskRow, QuoteChannel, QuoteExportRow, QuoteReplyInput, QuoteRequestInput, QuoteRequestRow,
-  QuoteSettings, ScorecardRow,
+  QuoteSettings, ScorecardRow, MyProfile,
 } from "./types";
 import { createSupabaseApi } from "./supabaseApi";
 import { createDemoApi } from "./demoApi";
@@ -24,6 +24,8 @@ export interface Api {
   /** Sets a new password and clears the forced-change flag. */
   updatePassword(newPassword: string): Promise<void>;
   getAccess(): Promise<Access | null>;
+  getMyProfile(): Promise<MyProfile | null>;
+  updateMyProfile(patch: { full_name: string; job_title: string; phone: string }): Promise<void>;
 
   // --- agreement + two-step ---
   getPolicy(): Promise<Policy | null>;
