@@ -97,6 +97,29 @@ revoke all on public.app_docs from anon;
 grant select, insert, update, delete on public.app_docs to authenticated;
 grant execute on function public.z1_member(), public.z1_admin() to authenticated;
 
+-- DEMO | LIVE: people who aren't signed in may read the demo settings (meta/demo) and nothing else.
+
+create or replace function public.z1_demo() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('on', coalesce((data->>'on')::boolean, true), 'pages', data->'pages')
+    from app_docs where path = 'meta/demo'
+$$;
+revoke all on function public.z1_demo() from public;
+grant execute on function public.z1_demo() to anon, authenticated;
+
+create or replace function public.z1_guard_demo() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if current_setting('app.z1_trusted', true) = 'on' then return coalesce(new, old); end if;
+  if coalesce(new.path, old.path) = 'meta/demo' and not z1_admin() then
+    raise exception 'Only a Super Admin can change the demo settings' using errcode = '42501';
+  end if;
+  return coalesce(new, old);
+end $$;
+drop trigger if exists z1_guard_demo on public.app_docs;
+create trigger z1_guard_demo before insert or update or delete on public.app_docs
+  for each row execute function public.z1_guard_demo();
+
 -- Live updates between people
 do $$ begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime')

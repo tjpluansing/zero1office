@@ -20,6 +20,8 @@ const { chromium } = require('playwright');
   const click = (sel) => p.evaluate((s) => { const el = document.querySelector(s); if (!el) throw new Error('no ' + s); el.click(); }, sel);
   await p.goto('http://localhost:8765/index.html');
   await p.evaluate(() => localStorage.clear()); await p.reload();
+  // visitors land on the demo; LIVE opens the sign-in
+  await p.waitForSelector('#z1mode [data-z1mode="live"]', { timeout: 15000 }); await click('#z1mode [data-z1mode="live"]');
   await login('paolo@ask-karla.com', 'paolo-pass-123');
   ok(await p.evaluate(() => !!window.__fakeState.docs['z1users/paolo_ask_karla_com'].lastLogin), 'lastLogin recorded for hosted sign-in');
   // add staff

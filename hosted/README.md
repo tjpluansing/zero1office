@@ -46,6 +46,18 @@ repository secret `FTP_PASSWORD` for the Hostinger FTP account `u779592699.z1app
 Without the Action: zip the folder and upload its contents to `public_html/app` in Hostinger's File Manager
 (keep `.htaccess`).
 
+## DEMO | LIVE
+
+app.ask-karla.com opens on a **demo**: the same app with sample clients, proposals, SOAs and tasks, and the label
+"Sample activity. No real data." The demo keeps everything in the visitor's browser tab. It never reads or writes the
+office's data in Supabase, and it never shows what that browser saved while someone was signed in.
+
+- **LIVE** (top bar, or the switch on the sign-in card) goes to sign in. People already signed in open live.
+- **Settings > Demo mode** (Super Admins only): turn the demo off, so everyone goes straight to sign in, and tick
+  which pages the demo shows. Users and Company profile never show in it.
+- One-time setup: run `supabase-demo.sql` in Supabase > SQL Editor. It lets visitors who aren't signed in read
+  those two demo settings and nothing else. Until it runs, the demo shows every page.
+
 ## What to know
 
 - Everyone signed in shares the same data. If two people edit the same record at the same time, the later save wins.
@@ -59,3 +71,4 @@ Without the Action: zip the folder and upload its contents to `public_html/app` 
 
 - `tests/docs_test.sql`: database rules, run on Postgres after `supabase.sql`.
 - `tests/e2e.cjs` with `tests/fake-supabase.js`: sign-in, users, staff pages, company profile, live sync, sign out.
+- `tests/demo_e2e.cjs` (same setup): demo with sample data and no database calls, real data untouched, LIVE to sign in, Settings > Demo mode.

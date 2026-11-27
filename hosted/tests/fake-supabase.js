@@ -36,8 +36,10 @@
   };
   var authCbs=[];
   var client = {
-    from: function(){ return new Q(); },
+    from: function(){ window.__fromCalls = (window.__fromCalls||0)+1; return new Q(); },
+    rpc: function(name){ window.__rpcCalls = (window.__rpcCalls||0)+1; if (window.__noDemoFn) return Promise.resolve({ data:null, error:{ message:'Could not find the function public.z1_demo' } }); var d = st.docs['meta/demo']; return Promise.resolve({ data: d ? { on: d.on !== false, pages: d.pages || null } : null, error:null }); },
     auth: {
+      stopAutoRefresh: function(){ window.__stoppedRefresh = true; },
       getSession: function(){ return Promise.resolve({ data:{ session: st.session } }); },
       signInWithPassword: function(o){ if(st.users[o.email]===o.password){ st.session={ access_token:'tok', user:{ email:o.email, app_metadata:{provider:'email'} } }; window.__fakeSave(); return Promise.resolve({ data:{ session: st.session }, error:null }); } return Promise.resolve({ data:{}, error:{ message:'Invalid login credentials' } }); },
       signInWithOAuth: function(){ return Promise.resolve({ error:{ message:'Microsoft sign-in is not set up in this test' } }); },

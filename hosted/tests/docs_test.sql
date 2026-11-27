@@ -37,6 +37,16 @@ select pg_temp.expect_error($$update app_docs set data = '{"name":"Hacked"}' whe
 update app_docs set data = '{"v":"[1]"}' where path = 'ls/zero1office-mock:v3/data/lists';
 select pg_temp.check((select updated_by = 'sec@ask-karla.com' from app_docs where path = 'ls/zero1office-mock:v3/data/lists'), 'staff edit shared records, stamped with their email');
 
+-- demo settings: Super Admins change them, staff can't, visitors who aren't signed in read only them
+set request.jwt.claims = '{"email":"paolo@ask-karla.com"}';
+insert into app_docs (path, data) values ('meta/demo', '{"on":true,"pages":["office","todo"]}');
+set request.jwt.claims = '{"email":"sec@ask-karla.com"}';
+select pg_temp.expect_error($$update app_docs set data = '{"on":false}' where path = 'meta/demo'$$, 'demo settings');
+reset role; set role anon; set request.jwt.claims = '{}';
+select pg_temp.check((select z1_demo()->'pages' = '["office","todo"]'::jsonb and (z1_demo()->>'on')::boolean), 'visitors read the demo settings');
+select pg_temp.expect_error($$select count(*) from app_docs$$, 'permission denied');
+reset role; set role authenticated;
+
 -- paused accounts lose access
 set request.jwt.claims = '{"email":"paolo@ask-karla.com"}';
 update app_docs set data = data || '{"status":"suspended"}' where path = 'z1users/sec_ask_karla_com';
