@@ -484,9 +484,13 @@
 
   /* the DEMO | LIVE switch in the top bar */
   var MODE_CSS = "#z1mode{display:inline-flex;align-items:center;gap:8px;flex:none;min-width:0}" +
-    "#z1mode .sw,#z1h .sw{display:inline-flex;border:1px solid var(--brand,#002C6C);border-radius:999px;overflow:hidden;flex:none}" +
-    "#z1mode .sw button,#z1h .sw button{font:700 11px Inter,system-ui,sans-serif;letter-spacing:.05em;padding:5px 11px;border:0;border-radius:0;background:transparent;color:var(--brand,#002C6C);cursor:pointer;min-height:26px}" +
-    "#z1mode .sw button[aria-pressed=true],#z1h .sw button[aria-pressed=true]{background:var(--brand,#002C6C);color:var(--surface,#fff)}" +
+    "#z1mode .sw,#z1h .sw{display:inline-flex;gap:3px;padding:3px;border:1px solid rgb(127 127 127/.35);border-radius:999px;background:rgb(127 127 127/.12);flex:none}" +
+    "#z1mode .sw button,#z1h .sw button{font:700 11px Inter,system-ui,sans-serif;letter-spacing:.05em;padding:4px 11px;border:0;border-radius:999px;background:transparent;color:#8A94A6;cursor:pointer;min-height:24px;display:inline-flex;align-items:center;gap:6px}" +
+    "#z1mode .sw button:hover,#z1h .sw button:hover{color:inherit}" +
+    "#z1mode .sw button[aria-pressed=true],#z1h .sw button[aria-pressed=true]{cursor:default;box-shadow:0 1px 4px rgb(0 0 0/.25)}" +
+    "#z1mode .sw button[aria-pressed=true]::before,#z1h .sw button[aria-pressed=true]::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}" +
+    "#z1mode .sw [data-z1mode=demo][aria-pressed=true],#z1h .sw [data-z1mode=demo][aria-pressed=true]{background:#F2B705;color:#1F1600}" +
+    "#z1mode .sw [data-z1mode=live][aria-pressed=true],#z1h .sw [data-z1mode=live][aria-pressed=true]{background:#16A34A;color:#fff}" +
     "#z1mode small{font-size:11.5px;color:var(--muted,#5F6B7E);white-space:nowrap}@media (max-width:760px){#z1mode small{display:none}}" +
     "#z1demoCard .pgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px;margin-top:8px}" +
     "#z1demoCard .pgs h4{grid-column:1/-1;margin:8px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#5F6B7E)}" +
