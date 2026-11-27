@@ -22,6 +22,14 @@ let fails = 0; const ok = (c, m) => { if (!c) fails++; console.log(c ? 'PASS' : 
   await p.click('#z1mode [data-z1mode="demo"]');
   await p.waitForFunction(() => window.Z1Host && Z1Host.demo && window.S && S.data, null, { timeout: 15000 }); await p.waitForTimeout(1500);
   ok(await p.evaluate(() => !document.querySelector('#side [data-go="clients"]') && !!document.querySelector('#side [data-go="office"]')), 'demo opened by a signed-in person hides the unticked page');
+  // signed out on this browser (sign-in card > DEMO): the demo still follows the saved ticks
+  await p.click('#z1mode [data-z1mode="live"]');
+  await p.waitForFunction(() => window.Z1Auth && Z1Auth.me && Z1Auth.me() && !Z1Host.demo, null, { timeout: 30000 }); await p.waitForTimeout(1000);
+  await p.evaluate(() => document.querySelector('[data-z1="signout"]').click());
+  await p.waitForSelector('#z1h [data-z1mode="demo"]', { timeout: 15000 });
+  await p.click('#z1h [data-z1mode="demo"]');
+  await p.waitForFunction(() => window.Z1Host && Z1Host.demo && window.S && S.data, null, { timeout: 15000 }); await p.waitForTimeout(1500);
+  ok(await p.evaluate(() => !document.querySelector('#side [data-go="clients"]') && !!document.querySelector('#side [data-go="office"]')), 'signed out on this browser, the demo still hides the unticked page');
   await b.close();
   if (fails) process.exit(1);
 })();
