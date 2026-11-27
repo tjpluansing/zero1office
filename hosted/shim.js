@@ -365,7 +365,11 @@
     }).then(function (r) { if (r.error) throw new Error(r.error.message); });
   };
 
+  var booted = false;
   function boot() {
+    // runApp() replays DOMContentLoaded for the app's scripts; without this guard that replay started a second
+    // sign-in check on top of the running app, which then showed "This is taking too long"
+    if (booted) return; booted = true;
     if (!CFG.url || !CFG.anonKey || !window.supabase) { screen("<div><h2>Setup needed</h2><p>config.js is missing the Supabase Project URL and anon key.</p></div>"); return; }
     // lock: run auth steps directly instead of through the browser's cross-tab lock, which can stay held by a stuck tab
     H.sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce",
@@ -375,6 +379,7 @@
     step("Checking your sign-in");
     H.sb.auth.getSession().catch(function (e) { return { data: { session: null }, error: e }; }).then(function (r) {
       var err = /error_description=([^&]+)/.exec(location.hash + "&" + location.search);
+      if (started) { stepDone(); return; }
       if (r.data.session) start(r.data.session);
       else loginScreen(err ? decodeURIComponent(err[1].replace(/\+/g, " ")) : "");
     });
