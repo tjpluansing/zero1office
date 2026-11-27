@@ -100,6 +100,7 @@
     var opts = { query: F.q + " " + F.city, country: "ph", include_opening_hours: false };
     if (next && F.cursor) opts.cursor = F.cursor;
     return callFirecrawl("alexandria_library_read", { objective: "Find Philippine businesses to offer group HMO plans to", calls: [{ provider: "firecrawl-maps", capability: "businesses/search", options: opts }] }).then(function (p) {
+      F.last = p;
       if (p.success === false || (p.error && !p.data)) throw { message: (p.error && (p.error.message || p.error)) || "The search failed." };
       var al = (p.data || p).alexandria, a = (Array.isArray(al) ? al[0] : al) || {};
       if (a.error) throw { message: a.error.message || a.error.code || "The search failed." };
@@ -119,6 +120,7 @@
     var q = F.q + " " + F.city;
     var query = F.src === "fb" ? q + " site:facebook.com" : F.src === "li" ? q + " Philippines site:linkedin.com/company" : q + " Philippines contact us -site:facebook.com -site:linkedin.com -site:jobstreet.com.ph -site:indeed.com";
     return callFirecrawl("firecrawl_search", { query: query, limit: 20, sources: ["web"], location: "Philippines", domainTools: false, objective: "Find Philippine businesses to offer group HMO plans to" }).then(function (p) {
+      F.last = p;
       if (p.success === false) throw { message: p.error || "The search failed." };
       var rows = (p.data && p.data.web) || p.web || (Array.isArray(p.data) ? p.data : null), seen = {}, have = haveIds();
       if (!rows) { F.odd = shape(p); rows = []; }
@@ -144,9 +146,9 @@
     if (F.busy) return;
     if (!F.q || !F.city) { F.err = "Type a business type and a city."; render(); return; }
     F.busy = true; F.err = ""; F.msg = ""; if (!next) { F.res = []; F.pick = {}; F.cursor = null; F.more = false; } render();
-    F.odd = "";
+    F.odd = ""; F.last = null;
     (F.src === "maps" ? searchMaps(next) : searchWeb()).then(function () {
-      if (!F.res.length) F.err = F.odd ? "Nothing found. Details for Claude: " + F.odd : "Nothing found. Try another business type or city.";
+      if (!F.res.length) F.err = "Nothing found. Try another business type or city. Details for Claude: " + (F.odd || shape(F.last));
     }).catch(function (e) { F.err = errText(e); }).then(function () { F.busy = false; render(); });
   }
 
