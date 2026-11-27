@@ -7,6 +7,7 @@ The same app that runs on claude.ai, hosted on our own domain. People sign in wi
 | --- | --- |
 | `supabase.sql` | Shared data table `app_docs`, the rules for who can read and change it, the private `files` bucket, Paolo and Karla as Super Admins |
 | `functions/z1-admin/index.ts` | Server function Super Admins use for temporary passwords, pause and remove |
+| `functions/z1-firecrawl/index.ts` | Server function for Leads > Find businesses (Firecrawl search, website check, Maps), members only; needs the `FIRECRAWL_API_KEY` secret |
 | `shim.js` | Sign-in screen, and the stand-in for claude.ai's database, file uploads and downloads |
 | `sw.js` | Serves uploaded files (`/_blob/<id>`) from the private bucket to signed-in people only |
 | `config.js` | Project URL and anon key (public values only) |
@@ -52,7 +53,8 @@ Without the Action: zip the folder and upload its contents to `public_html/app` 
 - Billing changes made by someone else show after a Refresh (a banner offers it).
 - Files copied into the folder (signature images, PDFs, `doctors.json`) can be opened by anyone who has the link.
   Move anything sensitive into the app's file uploads, which are private.
-- AI features (Ask Kara, drafting) and connectors (GHL, Microsoft 365, Google) are switched off here until
+- Leads search works here through `z1-firecrawl`. Found leads go onto the Leads list only; GoHighLevel isn't connected here yet.
+- AI features (Ask Kara, drafting) and other connectors (GHL, Microsoft 365, Google) are switched off here until
   phases 2 and 3.
 
 ## Tests
