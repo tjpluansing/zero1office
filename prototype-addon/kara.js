@@ -8,7 +8,8 @@
    - "How's the team?" / "Who's busy?" / "What is Nina doing?": answered from each agent's real work (S.team).
    - "Open billing", "Ask Maya to …", "Add to do: …". Kara shows the step and waits for Do it (Enter). A typed
      "open …" runs straight away.
-   - Anything else goes to Claude (the sample capability) when it is there, with counts, page names and agent names
+   - Anything else goes to the office's AI (the sample capability: Claude on claude.ai; Claude, ChatGPT or Gemini on
+     app.ask-karla.com, picked in Settings > AI brain) when it is there, with counts, page names and agent names
      and roles only: no client names, amounts or details leave the page.
 
    Kara also speaks up on her own:
@@ -28,7 +29,7 @@
   if (typeof S === "undefined" || typeof VIEWS !== "object" || !VIEWS || window.__z1Kara) return;
   window.__z1Kara = true;
   var KARA = "aria", LOG_KEY = "zero1office:kara:log:v1";
-  var PREF = { speak: "ak-kara-speak", brief: "ak-kara-brief", nudge: "ak-kara-nudge", briefDay: "ak-kara-brief-day" };
+  var PREF = { speak: "ak-kara-speak", float: "ak-kara-float", brief: "ak-kara-brief", nudge: "ak-kara-nudge", briefDay: "ak-kara-brief-day" };
   var AI = null, D = null, T = null, mine = false, listening = false, base = "";
   var K = { open: false, tab: "ask", busy: false, out: null, plan: null };
   function pref(k, def) { try { var v = localStorage.getItem(PREF[k]); return v == null ? def : v === "1"; } catch (err) { return def; } }
@@ -275,7 +276,7 @@
       K.busy = false;
       var c = err && err.code;
       if (c === "not_granted") AI = null;
-      K.out = { kind: "help", text: c === "rate_limited" ? "Give me a moment, then ask again." : c === "not_granted" ? "Claude is switched off for this page, so I can only do the built-in commands: brief you, the team, open a page, give a task, add a to-do." : "I couldn't think that through just now. The built-in commands still work." };
+      K.out = { kind: "help", text: c === "rate_limited" ? "Give me a moment, then ask again." : c === "not_granted" ? "The AI is switched off for this page, so I can only do the built-in commands: brief you, the team, open a page, give a task, add a to-do." : "I couldn't think that through just now. The built-in commands still work." };
       paint();
     });
   }
@@ -296,12 +297,97 @@
   function clearInput() { var i = inp(); if (i) i.value = ""; }
 
   /* ---------- speaking (off by default) ---------- */
-  function speak(text) {
-    if (!pref("speak", false) || !text) return;
-    if (T) { T.speak(String(text).slice(0, 1900)).catch(function (err) { if (err && err.code === "not_granted") T = null; }); return; }
-    try { var u = new SpeechSynthesisUtterance(String(text).slice(0, 600)); u.lang = "en-US"; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (err) { /* optional */ }
+  function speak(text, caption) {
+    var said = String(text || ""); if (!said) return;
+    var voice = pref("speak", false);
+    talk(caption || said, voice);
+    if (!voice) return;
+    if (T) {
+      T.speak(said.slice(0, 1900)).then(function () { talkDone(); }, function (err) { if (err && err.code === "not_granted") T = null; talkDone(); });
+      return;
+    }
+    try {
+      var u = new SpeechSynthesisUtterance(said.slice(0, 600)); u.lang = "en-US";
+      u.onboundary = function () { beat(); }; u.onend = u.onerror = function () { talkDone(); };
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    } catch (err) { talkDone(); }
   }
-  function hush() { try { if (T) T.stop(); else speechSynthesis.cancel(); } catch (err) { /* optional */ } }
+
+  /* ---------- the floating talking Kara (Paolo, 2026-11-27: "Create a floating talking Kara when she is talking") ----------
+     Whenever Kara says something (an answer, the daily briefing, a nudge), her avatar floats up in the corner with a
+     caption that types out, and her rings and sound bars move while she talks. With "Read replies aloud" on, she moves
+     in time with the voice; otherwise for as long as the caption takes to type. Drag her anywhere (remembered on this
+     browser), click her to open Ask Kara, or switch her off with "Floating Kara" in the bar. */
+  var tk = { el: null, timer: null, hide: null, voice: false, typing: false, hover: false };
+  function talker() {
+    if (tk.el) return tk.el;
+    var el = document.createElement("div"); el.className = "z1k-talk"; el.hidden = true; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
+    el.innerHTML = '<div class="z1k-tface" data-z1k="talkopen" title="Ask Kara"><span class="z1k-ring"></span><span class="z1k-ring r2"></span><span class="z1k-tav"></span>' +
+      '<span class="z1k-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>' +
+      '<div class="z1k-tcap"><b>Kara</b><span class="z1k-ttext"></span></div><button class="z1k-tx" data-z1k="talkx" aria-label="Hide Kara">✕</button>';
+    document.body.appendChild(el);
+    el.addEventListener("mouseenter", function () { tk.hover = true; });
+    el.addEventListener("mouseleave", function () { tk.hover = false; schedHide(); });
+    el.addEventListener("click", onClick);
+    // drag by the face
+    var face = el.querySelector(".z1k-tface"), drag = null;
+    face.addEventListener("pointerdown", function (ev) { var r = face.getBoundingClientRect(); drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, moved: false }; face.setPointerCapture(ev.pointerId); });
+    face.addEventListener("pointermove", function (ev) {
+      if (!drag) return; var x = ev.clientX - drag.dx, y = ev.clientY - drag.dy;
+      var f = face.getBoundingClientRect();
+      if (!drag.moved && Math.abs(x - f.left) + Math.abs(y - f.top) < 4) return;
+      drag.moved = true; setPos(el, x, y);
+    });
+    face.addEventListener("pointerup", function () {
+      if (drag && drag.moved) { var r = face.getBoundingClientRect(); try { localStorage.setItem("ak-kara-pos", JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (err) { /* optional */ } face.__dragged = true; setTimeout(function () { face.__dragged = false; }, 0); }
+      drag = null;
+    });
+    tk.el = el; return el;
+  }
+  // Where she was dragged to, kept on screen when the window is smaller (or a phone).
+  function place(el) {
+    var pos = null; try { pos = JSON.parse(localStorage.getItem("ak-kara-pos") || "null"); } catch (err) { /* optional */ }
+    if (!pos || !(pos.x >= 0) || !(pos.y >= 0)) return;
+    setPos(el, pos.x, pos.y);
+  }
+  // x, y = top-left of her face. On the right half of the screen the caption goes to her left so it stays on screen.
+  function setPos(el, x, y) {
+    var fw = el.querySelector(".z1k-tface").offsetWidth || 80;
+    x = Math.max(0, Math.min(innerWidth - fw, x)); y = Math.max(0, Math.min(innerHeight - fw, y));
+    var flip = x + fw / 2 > innerWidth / 2; el.classList.toggle("flip", flip);
+    el.style.left = flip ? "auto" : x + "px"; el.style.right = flip ? Math.max(0, innerWidth - x - fw) + "px" : "auto";
+    el.style.top = y + "px"; el.style.bottom = "auto";
+  }
+  addEventListener("resize", function () { if (tk.el) place(tk.el); });
+  function talk(text, voice) {
+    if (!pref("float", true)) return;
+    var t = String(text).replace(/\s+/g, " ").trim(); if (t.length > 220) t = t.slice(0, 217) + "…";
+    // With the Ask Kara bar open her answer is already on screen: animate her face in the bar instead.
+    if (K.open) {
+      talkHide(); scrim.classList.add("z1k-speaking"); clearTimeout(tk.bar); tk.voice = !!voice;
+      if (!voice) tk.bar = setTimeout(barDone, Math.min(6000, 900 + t.length * 30));
+      return;
+    }
+    var el = talker(), k = kara(), box = el.querySelector(".z1k-tav"), cap = el.querySelector(".z1k-ttext");
+    box.innerHTML = k ? av(k, 64) : ""; if (el.hidden) place(el);
+    clearInterval(tk.timer); clearTimeout(tk.hide);
+    el.hidden = false; el.classList.add("talking"); tk.voice = !!voice; tk.typing = true;
+    var reduce = false; try { reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (err) { /* optional */ }
+    if (reduce) { cap.textContent = t; tk.typing = false; if (!voice) talkDone(); return; }
+    var i = 0; cap.textContent = "";
+    tk.timer = setInterval(function () {
+      i = Math.min(t.length, i + 2); cap.textContent = t.slice(0, i);
+      if (!voice && /\s/.test(t.charAt(i))) beat();
+      if (i >= t.length) { clearInterval(tk.timer); tk.typing = false; if (!tk.voice) talkDone(); }
+    }, 33);
+  }
+  function beat() { var el = tk.el; if (!el) return; el.classList.remove("beat"); void el.offsetWidth; el.classList.add("beat"); }
+  function barDone() { clearTimeout(tk.bar); scrim.classList.remove("z1k-speaking"); }
+  function talkDone() { barDone(); if (!tk.el) return; if (tk.voice && tk.typing) { tk.voice = false; return; } tk.el.classList.remove("talking"); schedHide(); }
+  function schedHide() { clearTimeout(tk.hide); tk.hide = setTimeout(function () { if (tk.hover || !tk.el || tk.el.classList.contains("talking")) return; tk.el.hidden = true; }, 7000); }
+  function talkHide() { clearInterval(tk.timer); clearTimeout(tk.hide); if (tk.el) { tk.el.hidden = true; tk.el.classList.remove("talking"); } }
+
+  function hush() { try { if (T) T.stop(); else speechSynthesis.cancel(); } catch (err) { /* optional */ } if (tk.el) { tk.voice = false; talkDone(); } }
 
   /* ---------- UI ---------- */
   var css = document.createElement("style");
@@ -328,7 +414,25 @@
     ".z1k-card{position:fixed;right:16px;bottom:80px;z-index:140;width:min(340px,calc(100% - 32px));background:var(--surface);color:var(--ink);border:1px solid var(--gold);border-radius:14px;box-shadow:0 20px 50px -20px rgb(0 0 0 / .5);padding:12px;display:grid;gap:8px;font-size:13px}" +
     ".z1k-card .hd{display:flex;gap:8px;align-items:center}.z1k-card .hd b{flex:1}.z1k-card p{margin:0;line-height:1.45}" +
     "@media (prefers-reduced-motion:no-preference){.z1k-card{animation:z1kIn .2s ease-out}@keyframes z1kIn{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}}" +
-    "@media (max-width:760px){.z1k-btn kbd{display:none}.z1k-scrim{padding-top:16px}.z1k-card{bottom:76px}}";
+    ".z1k-talk{position:fixed;left:16px;bottom:16px;z-index:160;display:flex;align-items:flex-end;gap:10px;max-width:min(420px,calc(100% - 32px));pointer-events:none}" +
+    ".z1k-talk>*{pointer-events:auto}.z1k-tface{position:relative;width:76px;height:76px;flex:none;cursor:grab;touch-action:none;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--gold-soft),var(--surface));box-shadow:0 14px 34px -12px rgb(0 0 0 / .5);border:2px solid var(--gold)}" +
+    ".z1k-tface:active{cursor:grabbing}.z1k-tav .av{width:64px;height:64px;border-radius:50%}.z1k-tav .av img{border-radius:50%}.z1k-tav .av .st{display:none}" +
+    ".z1k-ring{position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--gold);opacity:0}" +
+    ".z1k-bars{position:absolute;bottom:-6px;left:50%;translate:-50% 0;display:flex;gap:2px;align-items:flex-end;height:14px;padding:2px 5px;border-radius:999px;background:var(--surface);border:1px solid var(--line);opacity:0;transition:opacity .2s}" +
+    ".z1k-bars i{width:3px;height:30%;border-radius:2px;background:var(--gold)}" +
+    ".z1k-tcap{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:8px 11px;font-size:13px;line-height:1.45;box-shadow:0 14px 34px -14px rgb(0 0 0 / .45);margin-bottom:22px;min-width:0}" +
+    ".z1k-tcap b{display:block;font:700 11px var(--body);color:var(--brand);letter-spacing:.04em;text-transform:uppercase;margin-bottom:1px}" +
+    ".z1k-tx{align-self:flex-start;border:0;background:var(--surface);color:var(--muted);border-radius:50%;width:22px;height:22px;cursor:pointer;box-shadow:0 4px 12px -6px rgb(0 0 0 / .4);font-size:11px;flex:none}" +
+    ".z1k-talk.flip{flex-direction:row-reverse}" +
+    ".z1k-hav{display:inline-flex;border-radius:50%;flex:none}.z1k-speaking .z1k-hav{box-shadow:0 0 0 3px var(--gold)}" +
+    "@media (prefers-reduced-motion:no-preference){.z1k-speaking .z1k-hav{animation:z1kTalk .45s ease-in-out infinite alternate}}" +
+    "@media (prefers-reduced-motion:no-preference){.z1k-talk:not([hidden]){animation:z1kFloat .3s ease-out}@keyframes z1kFloat{from{opacity:0;translate:0 12px}to{opacity:1;translate:0 0}}" +
+    ".z1k-talk .z1k-tface{animation:z1kBob 4s ease-in-out infinite}@keyframes z1kBob{50%{translate:0 -4px}}" +
+    ".z1k-talk.talking .z1k-ring{animation:z1kRing 1.4s ease-out infinite}.z1k-talk.talking .z1k-ring.r2{animation-delay:.7s}@keyframes z1kRing{0%{opacity:.7;scale:.95}100%{opacity:0;scale:1.35}}" +
+    ".z1k-talk.talking .z1k-bars{opacity:1}.z1k-talk.talking .z1k-bars i{animation:z1kBar .5s ease-in-out infinite alternate}.z1k-talk.talking .z1k-bars i:nth-child(2){animation-delay:.12s}.z1k-talk.talking .z1k-bars i:nth-child(3){animation-delay:.24s}.z1k-talk.talking .z1k-bars i:nth-child(4){animation-delay:.08s}@keyframes z1kBar{to{height:100%}}" +
+    ".z1k-talk.talking .z1k-tav{animation:z1kTalk .28s ease-in-out infinite alternate}@keyframes z1kTalk{to{scale:1.04}}.z1k-talk.beat .z1k-tav{animation:z1kBeat .18s ease-out}@keyframes z1kBeat{50%{scale:1.07}}}" +
+    "@media (prefers-reduced-motion:reduce){.z1k-talk.talking .z1k-bars{opacity:1}}" +
+    "@media (max-width:760px){.z1k-btn kbd{display:none}.z1k-scrim{padding-top:16px}.z1k-card{bottom:76px}.z1k-tface{width:60px;height:60px}.z1k-tav .av{width:50px;height:50px}.z1k-tcap{font-size:12px}}";
   document.head.appendChild(css);
 
   var MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>';
@@ -352,7 +456,7 @@
 
   var lastFocus = null;
   function open(prefill) {
-    hideCard();
+    hideCard(); talkHide();
     if (K.open) { var i0 = inp(); if (i0) i0.focus(); return; }
     lastFocus = document.activeElement; K.open = true; K.tab = "ask"; scrim.hidden = false;
     if (!K.out) K.out = pendingOut(greet());
@@ -375,7 +479,7 @@
   function paint() {
     if (!K.open) return;
     var box = document.getElementById("z1k"), i = inp(), keep = i ? i.value : "";
-    var k = kara(), hd = '<div class="z1k-hd">' + (k ? av(k, 30) : "") +
+    var k = kara(), hd = '<div class="z1k-hd">' + (k ? '<span class="z1k-hav">' + av(k, 30) + "</span>" : "") +
       '<form data-z1k="form" autocomplete="off"><input class="inp" id="z1kIn" placeholder="Ask Kara… “Brief me”, “Who\'s free?”, “Ask Maya to…”" aria-label="Ask Kara">' +
       (D ? '<button type="button" class="z1k-mic" data-z1k="mic">' + MIC + "</button>" : "") + '<button class="btn pri" type="submit">Go</button></form>' +
       '<button type="button" class="dots" data-z1k="close" aria-label="Close">✕</button></div>';
@@ -383,7 +487,7 @@
     var bd = '<div class="z1k-bd">' + (K.tab === "log" ? logHtml() : askHtml()) + "</div>";
     var sw = function (k2, label, def) { return '<label><input type="checkbox" data-z1k="pref" data-v="' + k2 + '"' + (pref(k2, def) ? " checked" : "") + "> " + label + "</label>"; };
     var ft = '<div class="z1k-ft"><span class="z1k-rule">Kara never sends, posts or pays. Client-facing work waits in Approvals for Karla. Every action is logged.</span>' +
-      sw("brief", "Daily briefing", true) + sw("nudge", "Tell me when something new needs me", true) + sw("speak", "Read replies aloud", false) + "</div>";
+      sw("brief", "Daily briefing", true) + sw("float", "Floating Kara", true) + sw("nudge", "Tell me when something new needs me", true) + sw("speak", "Read replies aloud", false) + "</div>";
     box.innerHTML = hd + tabs + bd + ft;
     var ni = inp(); if (ni) ni.value = keep;
     paintMic();
@@ -402,7 +506,7 @@
     if (o && o.kind === "team" && o.act.length) h1 += '<div class="z1k-team">' + o.act.slice(0, 18).map(function (e) { return '<button data-z1k="agent" data-v="' + h(e.id) + '" title="' + h(e.now || "") + '">' + av(e, 22, "xs") + h(e.n) + "</button>"; }).join("") + "</div>";
     if (o && o.kind === "agent") h1 += '<div class="actions"><button class="btn sm" data-z1k="ex" data-v="Ask ' + h(byId(o.agent).n) + ' to ">Give ' + h(byId(o.agent).n) + ' a task</button><button class="btn sm" data-z1k="go" data-v="agents">Open My agents</button></div>';
     if (!K.plan) h1 += '<div class="z1k-ex">' + ["Brief me", "Who's free?", "What is Nina doing?", "Open billing", "Ask Felix to follow up pending requirements", "Add to do: call Maxicare about SOA"].map(function (x) { return '<button class="chip" data-z1k="ex">' + h(x) + "</button>"; }).join("") + "</div>";
-    if (!AI) h1 += '<p class="z1k-guard">Built-in commands for now. Free-form questions need Claude, which this view doesn\'t have.</p>';
+    if (!AI) h1 += '<p class="z1k-guard">Built-in commands for now. For questions in your own words, connect an AI (Claude, ChatGPT or Gemini) in Settings &gt; AI brain.</p>';
     return h1;
   }
   function logHtml() {
@@ -423,7 +527,7 @@
     card.innerHTML = '<div class="hd">' + (k ? av(k, 26, "xs") : "") + "<b>" + h(title) + '</b><button class="dots" data-z1k="cardx" aria-label="Dismiss">✕</button></div><p>' + h(text) + '</p><div class="actions">' +
       (go2 ? '<button class="btn pri sm" data-z1k="cardgo" data-v="' + h(go2) + '">Open</button>' : "") + '<button class="btn sm" data-z1k="cardopen">Ask Kara</button></div>';
     card.hidden = false; cardFor = kind;
-    speak(title + ". " + text);
+    speak(title + ". " + text, title);
   }
   function signedIn() { return !!me() && !document.body.classList.contains("z1-locked"); }
   function briefing() {
@@ -433,7 +537,7 @@
     if (last === key) return false;
     try { localStorage.setItem(PREF.briefDay, key); } catch (err) { /* optional */ }
     var P = pending(), n = P.items.reduce(function (t, x) { return t + x.n; }, 0), today = P.ev.filter(function (e) { return e.d === P.t0; });
-    var txt = (n ? plural(n, "thing") + " need you: " + P.items.slice(0, 3).map(function (x) { return x.t; }).join("; ") + (P.items.length > 3 ? "; and more" : "") + "." : "Nothing needs you right now.") +
+    var txt = (n ? (n === 1 ? "1 thing needs" : n + " things need") + " you: " + P.items.slice(0, 3).map(function (x) { return x.t; }).join("; ") + (P.items.length > 3 ? "; and more" : "") + "." : "Nothing needs you right now.") +
       (today.length ? " " + plural(today.length, "event") + " today, first " + today[0].t + (today[0].tm ? " at " + today[0].tm : "") + "." : "");
     showCard(greet() + " Here's your day", txt, null, "brief");
     logIt("(daily briefing)", "Gave " + whoName() + " the daily briefing");
@@ -465,7 +569,9 @@
     else if (a === "do") { if (K.plan) doPlan(K.plan); }
     else if (a === "cancel") { K.plan = null; K.out = { kind: "help", text: "Okay, nothing done." }; paint(); }
     else if (a === "ex") { var i = inp(), t = b.getAttribute("data-v"); if (t) { if (i) { i.value = t; i.focus(); } return; } if (i) i.value = b.textContent; run(b.textContent); }
-    else if (a === "pref") { var k2 = b.getAttribute("data-v"); setPref(k2, b.checked); if (k2 === "speak" && !b.checked) hush(); }
+    else if (a === "pref") { var k2 = b.getAttribute("data-v"); setPref(k2, b.checked); if (k2 === "speak" && !b.checked) hush(); if (k2 === "float" && !b.checked) talkHide(); }
+    else if (a === "talkx") { hush(); talkHide(); }
+    else if (a === "talkopen") { if (!b.__dragged) open(); }
     else if (a === "cardx") hideCard();
     else if (a === "cardgo") { var v2 = b.getAttribute("data-v"); hideCard(); hush(); go(v2); }
     else if (a === "cardopen") { hideCard(); open(); }

@@ -8,6 +8,8 @@ The same app that runs on claude.ai, hosted on our own domain. People sign in wi
 | `supabase.sql` | Shared data table `app_docs`, the rules for who can read and change it, the private `files` bucket, Paolo and Karla as Super Admins |
 | `functions/z1-admin/index.ts` | Server function Super Admins use for temporary passwords, pause and remove |
 | `functions/z1-firecrawl/index.ts` | Server function for Leads > Find businesses (Firecrawl search, website check, Maps), members only; needs the `FIRECRAWL_API_KEY` secret |
+| `functions/z1-ai/index.ts` | The AI brain: Ask Kara and the AI-employee chats ask it; it calls Claude, ChatGPT or Gemini (picked in Settings > AI brain) with keys `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` from secrets |
+| `supabase-ai.sql` | Only a Super Admin can change which AI is used (`meta/ai`) |
 | `shim.js` | Sign-in screen, and the stand-in for claude.ai's database, file uploads and downloads |
 | `sw.js` | Serves uploaded files (`/_blob/<id>`) from the private bucket to signed-in people only |
 | `config.js` | Project URL and anon key (public values only) |
@@ -27,6 +29,10 @@ Keep every password and key in Bitwarden. Never paste the `service_role` key int
 5. **Server function.** Edge Functions > Deploy a new function > name `z1-admin` > paste
    `functions/z1-admin/index.ts` > Deploy. Then in its Settings turn **off** "Verify JWT with legacy secret"
    (newer projects sign tokens with keys that check rejects; the function checks for a Super Admin itself).
+5b. **AI brain (optional).** Deploy `functions/z1-ai/index.ts` the same way as `z1-admin` (name `z1-ai`, "Verify JWT"
+   off), run `supabase-ai.sql` in the SQL Editor, and add at least one key under Edge Functions > Secrets:
+   `OPENAI_API_KEY` (ChatGPT), `ANTHROPIC_API_KEY` (Claude) or `GEMINI_API_KEY` (Gemini). Then pick it in
+   Settings > AI brain in the app.
 6. **First password (only if not using Microsoft).** Authentication > Users > Add user >
    `paolo@ask-karla.com` with a password, "Auto confirm" on. After that, add everyone else from
    Settings > Users in the app.

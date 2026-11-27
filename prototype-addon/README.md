@@ -72,7 +72,8 @@ Kara (Chief of Staff, id `aria`) is the assistant: "Ask Kara" in the top bar, Ct
 - "Who's free?", "How's the team?", "What is Nina doing?": from each agent's real status and work (S.team).
 - "Open renewals", "Ask Maya to …" (`giveTask`), "Add to do: …". Kara shows the step and waits for Do it / Enter
   (a typed "open" runs straight away). Pages are limited to what the person may open (`Z1Users.allowed`).
-- Anything else goes to Claude (sample) with counts, page names and agent names, roles and busy/free only.
+- Anything else goes to the AI (sample) with counts, page names and agent names, roles and busy/free only. On
+  app.ask-karla.com that is whichever AI is picked in Settings > AI brain (`aibrain.js`).
 - Speaks up on her own: a daily briefing card the first time each person opens the app each day, and a nudge card
   when a new approval or a new "needs you" item appears (checked every 30 s). Both can be switched off in the bar.
 - Voice: the dictation capability on claude.ai, else the browser's SpeechRecognition (Chrome, Edge), so the
@@ -80,4 +81,17 @@ Kara (Chief of Staff, id `aria`) is the assistant: "Ask Kara" in the top bar, Ct
 - Guardrails: never sends, posts or pays; outbound tasks say they wait in Approvals for Karla; only Super Admins (and
   the old Agent account) hand out any task, others follow-ups only; every action logged in `zero1office:kara:log:v1`
   (shared on the hosted app) and Kara's feed. Personal switches use `ak-kara-*` keys (not shared).
+- Floating Kara (2026-11-27, "Create a floating talking Kara when she is talking"): whenever she speaks (briefing,
+  nudges, answers) her face floats in a corner with pulsing rings, sound bars and a typed caption, in time with the
+  voice when "Read replies aloud" is on. Drag her anywhere (position kept in `ak-kara-pos`, kept on screen and the
+  caption flips side on the right half), click her to open the bar, ✕ to hide; she fades 7 s after she stops. With
+  the bar open, her face in the bar animates instead. Switch: "Floating Kara". Reduced motion: no animation.
 - No capability changes.
+
+## AI brain (`aibrain.js`, Settings > AI brain, Super Admins only)
+
+Paolo, 2026-11-27: "I also want the option connect different AI's such as Chatgpt etc."
+Pick Claude, ChatGPT or Gemini for Ask Kara and the live AI-employee chat replies. On app.ask-karla.com the choice is
+saved in `meta/ai` and `hosted/functions/z1-ai` calls that AI with its key from Supabase secrets (keys never reach the
+browser); each AI has a Test button and an optional model name. On claude.ai the AI is always Claude, and the page
+says so.
