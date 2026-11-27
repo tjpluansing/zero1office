@@ -1054,7 +1054,7 @@
       var p = (res && res.payload) || {}, link = p.viewUrl || p.webLink || p.weblink || p.web_link || "";
       if (via === "gmail" && !link && p.id) link = "https://mail.google.com/mail/#drafts";
       G.sending = false; G.draft = { via: via, link: /^https:\/\//.test(link) ? link : "", attached: parts ? parts.n : 0, sig: parts ? parts.sig : false, box: box, flow: !!p.flow, flowN: p.flowN || 0, obErr: OB.err || "" }; OB.err = "";
-      log("draft"); ap.state = "sent"; ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ }
+      log("draft"); ap.state = "sent"; if (window.Z1PropLog) window.Z1PropLog.stage(ap.id, "Sent"); ap.when = "Draft in " + app + " " + nowLabel() + " today"; try { save(); } catch (err) { /* optional */ }
       G.ghlInfo = ghlInfo(o); clearPersonal(); say("Draft ready in " + app); render(); ghlLog();
     }, function (err) {
       G.sending = false;
@@ -1458,6 +1458,7 @@
         cta: o.files.length ? "Attachments: " + o.files.map(function (f) { return f.name; }).join(", ") : "No attachments" },
       checks: G.review.checks.map(function (x) { return [x.s === "ok" ? "ok" : "watch", x.t]; }) };
     list.unshift(a); o.apId = a.id;
+    if (window.Z1PropLog) window.Z1PropLog.add(o, a); // Numbers > Proposals (proplog.js)
     var ea = byId(a.who); if (ea) addFeed(ea, "Sent for your OK: " + a.doc.head);
     say("Proposal checked by " + G.review.agent.n + ". It's waiting for your OK in Approvals.");
   }

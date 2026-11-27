@@ -209,7 +209,7 @@
       return H.sb.storage.from("files").list("", { limit: 1000 }).then(function (r) {
         if (r.error) throw { code: "unavailable", message: r.error.message };
         var used = 0, list = (r.data || []).map(function (o) { var m = o.metadata || {}; used += m.size || 0; return { id: o.name, url: "/_blob/" + o.name, sizeBytes: m.size || 0, contentType: m.mimetype || "" }; });
-        return { assets: list, usage: { bytes: used } };
+        return { assets: list, usage: { bytes: used, maxBytes: 1024 * 1024 * 1024 } }; // Supabase Free plan: 1 GB of file storage
       });
     },
     delete: function (id) { return H.sb.storage.from("files").remove([id]).then(function (r) { if (r.error) throw { code: "unavailable", message: r.error.message }; }); },
@@ -225,7 +225,7 @@
       MEMFILES[id] = { id: id, url: url, sizeBytes: blob.size, contentType: type };
       return Promise.resolve(MEMFILES[id]);
     },
-    list: function () { var l = Object.keys(MEMFILES).map(function (k) { return MEMFILES[k]; }); return Promise.resolve({ assets: l, usage: { bytes: l.reduce(function (a, x) { return a + x.sizeBytes; }, 0) } }); },
+    list: function () { var l = Object.keys(MEMFILES).map(function (k) { return MEMFILES[k]; }); return Promise.resolve({ assets: l, usage: { bytes: l.reduce(function (a, x) { return a + x.sizeBytes; }, 0), maxBytes: 1024 * 1024 * 1024 } }); },
     delete: function (id) { delete MEMFILES[id]; return Promise.resolve(); },
   });
 

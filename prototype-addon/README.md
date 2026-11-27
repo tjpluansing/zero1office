@@ -95,3 +95,14 @@ Pick Claude, ChatGPT or Gemini for Ask Kara and the live AI-employee chat replie
 saved in `meta/ai` and `hosted/functions/z1-ai` calls that AI with its key from Supabase secrets (keys never reach the
 browser); each AI has a Test button and an optional model name. On claude.ai the AI is always Claude, and the page
 says so.
+
+## Proposals log (`proplog.js`, Numbers > Proposals)
+
+Paolo, 2026-11-27: "Under numbers, then proposals, that dashboard is not updating. Up to now, it's open proposals are 0."
+The dashboard only read the built-in `PROPOSALS` list (empty in LIVE) and the Proposal generator never wrote to it.
+Now `propgen.js` calls `Z1PropLog.add(o, approval)` when a proposal passes the check, and `Z1PropLog.stage(id, "Sent")`
+when its draft is made. Rows live in the shared db doc `meta/proposals` `{list:[...]}` (claude.ai db, or app_docs on
+app.ask-karla.com), so the whole team sees them. Stage follows the approval: Waiting for you, Drafting (approved or
+changes asked), Sent; a declined one is dropped; regenerating the same proposal replaces it. Kept: client or company
+name, type, company, plan, lives, lowest yearly premium, owner, date. No emails, ages or phone numbers.
+Test: `hosted/tests/proposals_log_e2e.cjs`. Keep `proplog.js` appended last (after `kara.js`). No capability changes.
