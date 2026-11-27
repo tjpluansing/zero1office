@@ -1,5 +1,5 @@
 import {
-  BarChart3, Building2, ClipboardCheck, ClipboardList, FileText, LayoutDashboard, type LucideIcon, Receipt, ScrollText, Settings, Users,
+  BarChart3, Building2, Cable, ClipboardCheck, ClipboardList, FileText, LayoutDashboard, ListTodo, type LucideIcon, Receipt, ScrollText, Settings, Users,
 } from "lucide-react";
 
 export interface NavItem {
@@ -17,9 +17,11 @@ export const NAV: NavItem[] = [
   { path: "/clients", label: "Client Masterlist", icon: ClipboardList, permission: "clients.view" },
   { path: "/quotes", label: "Quoting & Proposals", icon: FileText, permission: "quotes.view" },
   { path: "/billing", label: "Billing & SOA", icon: Receipt, permission: "billing.view" },
+  { path: "/followups", label: "Follow-ups", icon: ListTodo, permission: "followups.view" },
   { path: "/reports", label: "Reports", icon: BarChart3, permission: "reports.view" },
   { path: "/admin/users", label: "Manage Users", icon: Users, permission: "admin_users.view", section: "admin" },
   { path: "/admin/access-review", label: "Access Review", icon: ClipboardCheck, permission: "admin_users.view", section: "admin" },
+  { path: "/admin/integrations", label: "Integrations", icon: Cable, permission: "integrations.view", section: "admin" },
   { path: "/admin/audit", label: "Audit Log", icon: ScrollText, permission: "audit_log.view", section: "admin" },
   { path: "/admin/settings", label: "Admin Settings", icon: Settings, permission: "admin_settings.view", section: "admin" },
 ];

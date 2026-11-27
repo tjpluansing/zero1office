@@ -1,8 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Api } from "./api";
+import type { IntegrationAlert, IntegrationRow, SyncLog, TestResult } from "./types";
+import type { FollowupEvent, FollowupRow, FollowupSettings } from "./types";
+import type { QuoteAskRow, QuoteExportRow, QuoteRequestRow, QuoteSettings, ScorecardRow } from "./types";
 import type {
   Access, AccessReviewData, AuditRow, Catalog, ClientRow, DisbursementRow, MfaEnrollment, Override, Policy,
-  SoaEvent, SoaExportRow, SoaRow, UserRow,
+  SoaEvent, SoaExportRow, SoaRow, UserRow, MyProfile,
 } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -16,8 +19,9 @@ export function createSupabaseApi(): Api {
     return r.data;
   };
 
-  async function adminCall<T>(body: Record<string, unknown>): Promise<T> {
-    const { data, error } = await sb.functions.invoke("admin-users", { body });
+  const adminCall = <T,>(body: Record<string, unknown>) => adminFn<T>("admin-users", body);
+  async function adminFn<T>(fn: string, body: Record<string, unknown>): Promise<T> {
+    const { data, error } = await sb.functions.invoke(fn, { body });
     if (error) {
       // FunctionsHttpError carries the JSON body in error.context
       let msg = error.message;
@@ -67,6 +71,18 @@ export function createSupabaseApi(): Api {
       if (!s.session) return null;
       return must(await sb.rpc("my_access")) as Access | null;
     },
+    async getMyProfile() {
+      const { data: s } = await sb.auth.getSession();
+      if (!s.session) return null;
+      return must(await sb.rpc("my_profile")) as MyProfile | null;
+    },
+    async updateMyProfile(patch) {
+      const { data: s } = await sb.auth.getSession();
+      const uid = s.session?.user.id;
+      if (!uid) throw new Error("Your session has ended. Sign in again.");
+      const rows = must(await sb.from("profiles").update(patch).eq("id", uid).select("id"));
+      if (!rows?.length) throw new Error("Your profile could not be saved.");
+    },
 
     async getPolicy() {
       return must(await sb.rpc("current_policy")) as Policy | null;
@@ -98,6 +114,38 @@ export function createSupabaseApi(): Api {
     },
     async completeAccessReview(notes) {
       must(await sb.rpc("complete_access_review", { p_notes: notes }));
+    },
+
+    async listIntegrations() {
+      return must(await sb.from("integrations")
+        .select("id, name, enabled, config, secret_hint, status, last_tested_at, last_test_ok, last_error, last_details, secret_set_at, updated_at, webhook_secret_hint, webhook_secret_set_at, last_event_at")
+        .order("id")) as IntegrationRow[];
+    },
+    async saveIntegration(id, config, secret, enabled) {
+      must(await sb.rpc("integration_save", { p_id: id, p_config: config, p_secret: secret, p_enabled: enabled }));
+    },
+    testIntegration: (id) => adminFn<TestResult>("integrations", { action: "test", id }),
+    async disconnectIntegration(id) {
+      must(await sb.rpc("integration_disconnect", { p_id: id }));
+    },
+    webhookUrl: (id) => `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${id}-webhook`,
+    async newWebhookSecret(id) {
+      return must(await sb.rpc("integration_new_webhook_secret", { p_id: id })) as string;
+    },
+    async getSyncLog(id): Promise<SyncLog> {
+      const [events, runs] = await Promise.all([
+        sb.from("integration_events")
+          .select("id, event_type, summary, verified_by, status, attempts, next_attempt_at, last_error, result, client_id, received_at, processed_at")
+          .eq("integration_id", id).order("received_at", { ascending: false }).limit(100),
+        sb.from("integration_runs").select("*").eq("integration_id", id).order("started_at", { ascending: false }).limit(20),
+      ]);
+      return { events: must(events), runs: must(runs) };
+    },
+    async retryEvent(eventId) {
+      must(await sb.rpc("integration_retry_event", { p_event: eventId }));
+    },
+    async getIntegrationAlerts() {
+      return must(await sb.rpc("integration_alerts")) as IntegrationAlert[];
     },
 
     async getCatalog(): Promise<Catalog> {
@@ -229,6 +277,95 @@ export function createSupabaseApi(): Api {
     async exportSoas() {
       const rows = must(await sb.rpc("export_soas")) as SoaExportRow[];
       await sb.rpc("log_export", { p_what: "billing", p_rows: rows.length });
+      return rows;
+    },
+    async listFollowups() {
+      return must(await sb.from("followups").select("*").order("next_chase_on")) as FollowupRow[];
+    },
+    async listFollowupEvents(id) {
+      return must(await sb.from("followup_events").select("*").eq("followup_id", id)
+        .order("at", { ascending: false }).limit(100)) as FollowupEvent[];
+    },
+    async getFollowupSettings() {
+      return must(await sb.from("followup_settings").select("chase_every_days,max_attempts,escalate_overdue_days")
+        .single()) as FollowupSettings;
+    },
+    async saveFollowupSettings(s) {
+      const rows = must(await sb.from("followup_settings").update({
+        chase_every_days: s.chase_every_days, max_attempts: s.max_attempts, escalate_overdue_days: s.escalate_overdue_days,
+      }).eq("id", true).select("id"));
+      if (!rows?.length) throw new Error("Only Karla or an admin can change the chase rules.");
+    },
+    async saveFollowup(row) {
+      const { id, ...fields } = row;
+      if (id) must(await sb.from("followups").update(fields).eq("id", id));
+      else must(await sb.from("followups").insert(fields));
+    },
+    async logFollowupChase(id, channel, note, fromFelix) {
+      must(await sb.rpc("log_followup_chase", { p_id: id, p_channel: channel, p_note: note, p_from_felix: fromFelix }));
+    },
+    async setFollowupStatus(id, status, note) {
+      must(await sb.rpc("set_followup_status", { p_id: id, p_status: status, p_note: note }));
+    },
+    async addFollowupNote(id, note) {
+      must(await sb.rpc("add_followup_note", { p_id: id, p_note: note }));
+    },
+    async deleteFollowup(id) {
+      const rows = must(await sb.from("followups").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete follow-ups.");
+    },
+    async exportFollowups() {
+      const rows = must(await sb.rpc("export_followups")) as FollowupRow[];
+      await sb.rpc("log_export", { p_what: "followups", p_rows: rows.length });
+      return rows;
+    },
+    async listQuoteRequests() {
+      return must(await sb.from("quote_requests").select("*").order("created_at", { ascending: false })) as QuoteRequestRow[];
+    },
+    async listQuoteAsks() {
+      return must(await sb.from("quote_asks").select("*").order("sent_at")) as QuoteAskRow[];
+    },
+    async getQuoteSettings() {
+      return must(await sb.from("quote_settings").select("target_days").single()) as QuoteSettings;
+    },
+    async saveQuoteSettings(s) {
+      const rows = must(await sb.from("quote_settings").update({ target_days: s.target_days }).eq("id", true).select("id"));
+      if (!rows?.length) throw new Error("Only Karla or an admin can change the reply-by target.");
+    },
+    async saveQuoteRequest(row) {
+      const { id, ...fields } = row;
+      if (id) {
+        const rows = must(await sb.from("quote_requests").update(fields).eq("id", id).select("id"));
+        if (!rows?.length) throw new Error("You do not have permission to edit quote requests.");
+        return id;
+      }
+      return (must(await sb.from("quote_requests").insert(fields).select("id").single()) as { id: string }).id;
+    },
+    async sendQuoteRequest(id, insurers, channel, addFollowups) {
+      must(await sb.rpc("send_quote_request", { p_id: id, p_insurers: insurers, p_channel: channel, p_add_followups: addFollowups }));
+    },
+    async recordQuoteReply(askId, r) {
+      must(await sb.rpc("record_quote_reply", {
+        p_ask_id: askId, p_status: r.status, p_annual_premium: r.annual_premium ?? null, p_plan_name: r.plan_name ?? null,
+        p_note: r.note ?? null, p_replied_at: r.replied_at ?? null,
+      }));
+    },
+    async chooseQuote(askId) {
+      must(await sb.rpc("choose_quote", { p_ask_id: askId }));
+    },
+    async cancelQuoteRequest(id) {
+      must(await sb.rpc("cancel_quote_request", { p_id: id }));
+    },
+    async deleteQuoteRequest(id) {
+      const rows = must(await sb.from("quote_requests").delete().eq("id", id).select("id"));
+      if (!rows?.length) throw new Error("You do not have permission to delete quote requests.");
+    },
+    async getScorecard(days, productLine) {
+      return must(await sb.rpc("quote_scorecard", { p_days: days, p_product_line: productLine })) as ScorecardRow[];
+    },
+    async exportQuoteRequests() {
+      const rows = must(await sb.rpc("export_quote_requests")) as QuoteExportRow[];
+      await sb.rpc("log_export", { p_what: "quotes", p_rows: rows.length });
       return rows;
     },
   };

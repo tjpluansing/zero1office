@@ -589,7 +589,7 @@ insert into public.permissions (key, page, page_label, action, description, sort
 insert into public.roles (id, name, description, is_super, sort) values
   ('super_admin', 'Super Admin', 'Everything, including users and settings. Cannot be locked out.', true, 10),
   ('agent',       'Agent',       'Licensed agent: all client, quoting, billing and report work, including approvals.', false, 20),
-  ('assistant',   'Assistant',   'Day-to-day encoding: view and update clients and quotes, no approvals, deletes or exports.', false, 30),
+  ('assistant',   'Assistant',   'Follows up pending items: add and update clients, draft quotes, see billing status. No approvals, deletes, exports, reports or admin.', false, 30),
   ('no_access',   'No access',   'Signed in but waiting for an admin to grant access.', false, 99);
 
 insert into public.role_permissions (role_id, permission_key)
@@ -601,5 +601,4 @@ insert into public.role_permissions (role_id, permission_key) values
   ('assistant','dashboard.view'),
   ('assistant','clients.view'), ('assistant','clients.create'), ('assistant','clients.edit'),
   ('assistant','quotes.view'),  ('assistant','quotes.create'),  ('assistant','quotes.edit'),
-  ('assistant','billing.view'),
-  ('assistant','reports.view');
+  ('assistant','billing.view');

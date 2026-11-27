@@ -1,8 +1,9 @@
-import { KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, KeyRound, LogOut, Menu, ShieldAlert, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { isDemo } from "../lib/api";
+import { api, isDemo } from "../lib/api";
+import type { IntegrationAlert } from "../lib/types";
 import { NAV } from "../lib/nav";
 import { cx } from "./ui";
 
@@ -18,7 +19,15 @@ export function Logo({ light }: { light?: boolean }) {
 export default function Layout() {
   const { access, can, signOut } = useAuth();
   const [open, setOpen] = useState(false);
-  const fullBleed = useLocation().pathname === "/office";
+  const [alerts, setAlerts] = useState<IntegrationAlert[]>([]);
+  const { pathname } = useLocation();
+  const fullBleed = pathname === "/office";
+  const seesIntegrations = can("integrations.view");
+  // Re-check on every page change so a fixed problem disappears quickly.
+  useEffect(() => {
+    if (!seesIntegrations) { setAlerts([]); return; }
+    api.getIntegrationAlerts().then(setAlerts).catch(() => setAlerts([]));
+  }, [seesIntegrations, pathname]);
   // Only pages the user may open are rendered. Route guards and the
   // database block the rest even if someone types the URL.
   const items = NAV.filter((n) => can(n.permission));
@@ -65,13 +74,16 @@ export default function Layout() {
         </NavLink>
         <div className="mt-2 rounded-xl bg-white/5 p-3">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-gold/90 text-sm font-semibold text-navy">{initials}</div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-white">{access?.full_name || access?.email}</div>
-              <div className="flex items-center gap-1 text-xs text-white/60">
-                {access?.is_super && <ShieldCheck className="h-3 w-3 text-gold" />}{access?.role_name}
+            <Link to="/profile" onClick={() => setOpen(false)} title="My profile"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold/90 text-sm font-semibold text-navy">{initials}</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-white">{access?.full_name || access?.email}</div>
+                <div className="flex items-center gap-1 text-xs text-white/60">
+                  {access?.is_super && <ShieldCheck className="h-3 w-3 text-gold" />}{access?.role_name}
+                </div>
               </div>
-            </div>
+            </Link>
             <button onClick={() => void signOut()} title="Sign out" aria-label="Sign out"
               className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white">
               <LogOut className="h-4 w-4" />
@@ -100,6 +112,14 @@ export default function Layout() {
             <Link to={access.mfa_enrolled ? "/verify-code" : "/security"} className="font-semibold underline">
               {access.mfa_enrolled ? "Verify now" : "Set it up"}
             </Link>
+          </div>
+        )}
+        {alerts.length > 0 && pathname !== "/admin/integrations" && (
+          <div className={cx("flex flex-wrap items-center justify-center gap-2 px-4 py-2 text-center text-sm",
+            alerts.some((a) => a.severity === "red") ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900")}>
+            <AlertTriangle className="h-4 w-4" />
+            {alerts[0].title}{alerts.length > 1 && ` (and ${alerts.length - 1} more)`}
+            <Link to="/admin/integrations" className="font-semibold underline">Review</Link>
           </div>
         )}
         <main className={fullBleed ? "flex min-h-0 w-full flex-1 flex-col" : "mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-8 sm:py-8"}>

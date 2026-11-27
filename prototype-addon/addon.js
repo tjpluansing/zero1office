@@ -21,37 +21,43 @@
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (err) { return null; } }
   function say(msg) { try { toast(msg); } catch (err) { /* toast is optional */ } }
 
-  /* ---------- 1. sign-in ---------- */
-  var USERS = [
-    { email: "paolo@ask-karla.com", name: "Paolo", role: "Super Admin", perms: ["billing.view", "billing.create", "billing.edit", "billing.delete", "billing.export", "billing.approve"] },
-    { email: "karla@ask-karla.com", name: "Karla", role: "Agent", perms: ["billing.view", "billing.create", "billing.edit", "billing.delete", "billing.export", "billing.approve"] },
-    { email: "assistant@ask-karla.com", name: "New Assistant", role: "Assistant", perms: ["billing.view"] },
-  ];
+  /* ---------- 1. sign-in ----------
+     Accounts are managed by Super Admins in Settings > Users (users.js, 2026-11-27). users.js checks the
+     email and password against the shared user list and calls Z1Auth.set(user). `me` keeps the old shape
+     { email, name, role, perms } so the rest of this file is unchanged. */
   var AUTH_KEY = "zero1office-auth:v1";
   var me = null;
-  (function () { var s = store(AUTH_KEY); if (s && s.email) me = USERS.filter(function (u) { return u.email === s.email; })[0] || null; })();
   function can(p) { return !!me && me.perms.indexOf(p) > -1; }
 
   var gate = document.createElement("div");
   gate.className = "z1-login";
   gate.innerHTML =
-    '<div class="card"><div class="logo"><div class="mark">0<b>1</b></div><div class="word">zero<span>1</span>office</div></div>' +
-    '<div><h2>Sign in</h2><p class="muted small">Use your Ask Karla account.</p></div>' +
+    '<div class="card"><div class="logo" id="z1LoginLogo"><div class="mark">0<b>1</b></div><div class="word">zero<span>1</span>office</div></div>' +
+    '<div><h2>Sign in</h2><p class="muted small">Use your @ask-karla.com email and the password you were given.</p></div>' +
     '<form id="z1LoginForm" novalidate>' +
     '<label class="fld" for="z1Email">Email<input class="inp" id="z1Email" type="email" autocomplete="username" placeholder="you@ask-karla.com"></label>' +
     '<label class="fld" for="z1Pw">Password<input class="inp" id="z1Pw" type="password" autocomplete="current-password"></label>' +
     '<span class="err" id="z1LoginErr" role="alert"></span>' +
-    '<button class="btn pri" type="submit" style="justify-content:center;padding:10px">Sign in</button></form>' +
-    '<p class="hint">Sample accounts, password <b>demo</b>: <b>karla@ask-karla.com</b> (Agent), <b>paolo@ask-karla.com</b> (Super Admin), <b>assistant@ask-karla.com</b> (Assistant, view and follow-ups only).</p></div>';
+    '<button class="btn pri" type="submit" id="z1LoginBtn" style="justify-content:center;padding:10px">Sign in</button></form>' +
+    '<p class="hint" id="z1LoginHint">Forgot your password or need an account? Ask Paolo or Karla.</p></div>';
   document.body.appendChild(gate);
   gate.querySelector("form").addEventListener("submit", function (ev) {
     ev.preventDefault();
-    var em = document.getElementById("z1Email").value.trim().toLowerCase(), pw = document.getElementById("z1Pw").value;
-    var u = USERS.filter(function (x) { return x.email === em; })[0];
-    if (!u || pw !== "demo") { document.getElementById("z1LoginErr").textContent = "Wrong email or password."; return; }
-    me = u; store(AUTH_KEY, { email: u.email }); document.getElementById("z1Pw").value = ""; document.getElementById("z1LoginErr").textContent = "";
-    lock(); render(); pushLive();
+    var em = document.getElementById("z1Email").value.trim().toLowerCase(), pw = document.getElementById("z1Pw").value, err = document.getElementById("z1LoginErr");
+    if (!/^[^@\s]+@ask-karla\.com$/.test(em)) { err.textContent = "Use your @ask-karla.com email."; return; }
+    if (!window.Z1Users || !window.Z1Users.signIn) { err.textContent = "Still loading. Try again in a moment."; return; }
+    var btn = document.getElementById("z1LoginBtn"); btn.disabled = true; err.textContent = "";
+    window.Z1Users.signIn(em, pw).then(function (u) {
+      btn.disabled = false;
+      if (!u) { err.textContent = "Wrong email or password."; return; }
+      document.getElementById("z1Pw").value = ""; setMe(u);
+    }, function (m) { btn.disabled = false; err.textContent = (m && m.message) || String(m || "Sign-in failed. Try again."); });
   });
+  function setMe(u) {
+    me = u || null;
+    if (me) store(AUTH_KEY, { email: me.email }); else { try { localStorage.removeItem(AUTH_KEY); } catch (err) { /* private mode */ } }
+    lock(); render(); if (me) pushLive();
+  }
   function lock() {
     gate.hidden = !!me;
     document.body.classList.toggle("z1-locked", !me);
@@ -62,8 +68,10 @@
   meBox.className = "z1-me";
   document.getElementById("side").appendChild(meBox);
   function renderMe() {
+    if (me && window.Z1Users && window.Z1Users.meBox) { meBox.innerHTML = window.Z1Users.meBox(me); return; }
     meBox.innerHTML = me ? '<span><b>' + e(me.name) + '</b><small>' + e(me.role) + '</small></span><button class="btn sm" data-z1="signout">Sign out</button>' : "";
   }
+  window.Z1Auth = { me: function () { return me; }, set: setMe, renderMe: renderMe, key: AUTH_KEY };
 
   /* ---------- 2. SOA tracker data ---------- */
   var PROV = ["Maxicare", "Medicard", "Intellicare", "IMS", "KHL", "FWD"];
@@ -577,7 +585,7 @@
   function act(a, id, v) {
     var m = Z.modal, s, d;
     switch (a) {
-      case "signout": me = null; try { localStorage.removeItem(AUTH_KEY); } catch (err) { /* private mode */ } closeModal(); lock(); return;
+      case "signout": closeModal(); setMe(null); return;
       case "tab": Z.tab = v; render(); return;
       case "fstage": Z.fStage = Z.fStage === v ? "all" : v; render(); return;
       case "fneed": Z.fNeed = !Z.fNeed; render(); return;
@@ -776,18 +784,47 @@
       .concat(overdue.slice(0, 3).map(function (x) { return { who: "nina", title: x.s.account_name + ": SOA " + x.s.soa_no, tone: "need", badge: x.f.overdue + " d overdue", sub: x.s.provider + " · " + peso(x.s.amount) + " unpaid", path: "soa:" + x.s.id }; }))
       .concat(docs.filter(function (x) { return x.f.m2307; }).slice(0, 2).map(function (x) { return { who: "nina", title: "2307 missing: " + x.s.account_name, tone: "info", badge: "2307", sub: "SOA " + x.s.soa_no + " · " + x.s.provider, path: "soa:" + x.s.id }; }));
     if (overdue.length > 3) items.push({ who: "nina", title: (overdue.length - 3) + " more overdue SOAs", tone: "info", badge: "View all", path: "billing" });
-    return { type: "z1-live", agents: { nina: nina, sol: sol }, items: items, empty: "SOAs and payouts are all on track" };
+    var out = { type: "z1-live", agents: { nina: nina, sol: sol }, items: items, empty: "SOAs and payouts are all on track" };
+    // Later add-ons register more live agents here: each returns {agents:{id:info}, items:[...]}.
+    (window.Z1LiveAgents || []).forEach(function (fn) {
+      try {
+        var r = fn() || {};
+        Object.keys(r.agents || {}).forEach(function (id) { out.agents[id] = r.agents[id]; });
+        out.items = out.items.concat(r.items || []);
+      } catch (err) { /* one agent's data problem must not stop the others */ }
+    });
+    if (out.items.length) out.empty = "";
+    return out;
   }
 
   var LIVE_SRC = (document.getElementById("z1LiveSrc") || {}).textContent || "";
   function officeWin() { var fr = document.getElementById("officeFrame"); try { return fr && fr.contentWindow; } catch (err) { return null; } }
+  // Agents fed by real tracker data show it on their own cards too: Active with the real "now" while
+  // they have real work, Idle when everything is done. Paolo can still set Offline by hand.
+  window.Z1LiveAgents = window.Z1LiveAgents || [];
+  function syncTeam(agents) {
+    if (typeof byId !== "function") return;
+    var changed = false;
+    Object.keys(agents).forEach(function (id) {
+      var e = byId(id), a = agents[id];
+      if (!e || e.s === "offline") return;
+      var s = a.tasks && a.tasks.length ? "active" : "idle";
+      if (e.s !== s || e.now !== a.now) { e.s = s; e.now = a.now; changed = true; }
+    });
+    if (!changed) return;
+    try { save(); } catch (err) { /* storage full or blocked */ }
+    if (!document.querySelector(".modal.open, dialog[open]")) render();
+  }
   function pushLive() {
+    if (!me || !can("billing.view")) return;
+    var live = buildLive();
+    syncTeam(live.agents);
     var w = officeWin();
-    if (!w || !me || !can("billing.view")) return;
+    if (!w) return;
     try {
       if (typeof w.renderPanel !== "function") return;
       if (!w.__z1live && LIVE_SRC) { var sc = w.document.createElement("script"); sc.textContent = LIVE_SRC; w.document.body.appendChild(sc); w.__z1live = true; }
-      w.postMessage(buildLive(), "*");
+      w.postMessage(live, "*");
     } catch (err) { /* office not ready yet */ }
   }
   window.addEventListener("message", function (ev) {
@@ -798,6 +835,7 @@
       var p = m.path.split(":");
       if (p[0] === "soa") { Z.tab = "soas"; go("billing"); openModal({ kind: "soa", id: p[1] }); }
       else if (p[0] === "payout") { Z.tab = "payouts"; go("billing"); openModal({ kind: "payout", id: p[1] }); }
+      else if (p[0] === "view" && VIEWS[p[1]]) { if (p[2]) S.spTab = p[2]; go(p[1]); }
       else { Z.tab = "soas"; Z.fNeed = true; go("billing"); }
     }
   });

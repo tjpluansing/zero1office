@@ -34,7 +34,7 @@ Commission received, Karla's receipt due → Receipt issued to provider → Clos
   receipt number. Only `billing.approve` (Karla) can record or change her receipt.
 - CSV import (with a template) and a logged export. No member names or health details are stored.
 
-Tables: `soas`, `disbursements`, `soa_events` in `supabase/migrations/20261124000005_soa_collections.sql`.
+Tables: `soas`, `disbursements`, `soa_events` in `supabase/migrations/20261124000008_soa_collections.sql`.
 
 - Frontend: React 18 + TypeScript + Vite + Tailwind (static files)
 - Backend: Supabase (Postgres, Auth, Edge Functions), Singapore region recommended
@@ -87,6 +87,8 @@ The matrix picks it up automatically.
 5. **Deploy the Edge Function**
    ```bash
    supabase functions deploy admin-users
+   supabase functions deploy integrations
+   supabase functions deploy ghl-webhook --no-verify-jwt   # GHL has no Supabase login; it checks its own signature or secret
    supabase secrets set APP_URL=https://app.ask-karla.com
    ```
 6. **Create Paolo's Super Admin** (on your own computer; the service key never goes in the app):
@@ -117,11 +119,90 @@ The matrix picks it up automatically.
 | Monthly access review with sign-off and snapshot | `access_review_data()`, `complete_access_review()`; *Access Review* page |
 | Warning while only one Super Admin exists | Manage Users |
 | Admin reset of a lost authenticator | Manage Users → Reset sign-in |
+| Admin → Integrations: GoHighLevel, Microsoft 365, Claude API with keys in Supabase Vault, test connection, pause, disconnect | migration 5, `supabase/functions/integrations`, `src/pages/admin/Integrations.tsx` |
+| GHL webhooks: signature or secret checked, each event stored once, retries with backoff, Sync log with Retry | migration 6, `supabase/functions/ghl-webhook`, Integrations page |
+| Integration alerts: banner, alert list, daily re-test and email to Super Admins, key age and Microsoft secret expiry | migration 7, `supabase/functions/integrations` (health) |
 | Written access control and password policy | `docs/policies/access-control-and-password-policy.md` |
 
 Edit the agreement wording in migration 4 before launch. To change it later, run
 `select publish_policy('2027-01-15', 'Acceptable Use and Privacy Agreement', '<text>');` in the Supabase SQL editor;
 everyone accepts again at their next request.
+
+## GHL webhooks
+
+GHL sends contact changes to `https://<project>.supabase.co/functions/v1/ghl-webhook`. Each delivery must carry
+GHL's Ed25519 `X-GHL-Signature` or the `X-Webhook-Secret` created on Admin → Integrations → GoHighLevel (only its
+hash is stored). Events are stored once and turned into Client Masterlist rows; a GHL delete never deletes a client.
+
+Turn on `pg_cron` (Database → Extensions) and schedule the retries and the 30/180-day clean-up in the SQL editor:
+
+```sql
+select cron.schedule('z1-sync-retries', '* * * * *', $$select public.process_integration_events(50, 'schedule')$$);
+select cron.schedule('z1-sync-purge', '15 3 * * *', $$select public.purge_integration_events()$$);
+```
+
+## Follow-up queue
+
+**Follow-ups** (`/followups`) lists every pending requirement or reply Ask Karla is chasing from a client or an
+insurer. Felix, the AI employee, drafts each chase (firmer with every try, short for Viber/Messenger, full for
+email); the assistant checks it, sends it from the usual channel and clicks **I sent it**. The next chase is
+scheduled 2 business days later, and after 3 tries with no reply the item moves to Karla ("With Karla").
+Only users with `followups.approve` (Karla, Super Admins) can waive or cancel a requirement.
+
+Only a short description of what is missing is stored. ID, card, account and phone numbers are refused, and
+documents go straight to the insurer. The rules live in `followup_settings` (`chase_every_days`,
+`max_attempts`, `escalate_overdue_days`). Karla or an admin changes them with **Chase rules** on the Follow-ups page; each change is in the audit log.
+Escalate items that are past their due date every morning (8 AM Manila = 00:00 UTC):
+
+```sql
+select cron.schedule('z1-followups-overdue', '0 0 * * *', $$select public.escalate_overdue_followups()$$);
+```
+
+## Integration health check and alerts
+
+Admins see a banner and an alert list on Admin → Integrations when a connection breaks, GHL updates fail or get
+stuck, webhooks go quiet for 7 days, a key is over 90 days old, or the Microsoft client secret is within 30 days
+of expiring. Once a day the `integrations` function re-tests every active connection and emails new alerts to the
+Super Admins from the Microsoft 365 mailbox (needs *Allow sending email* on that card).
+
+```bash
+supabase secrets set HEALTH_CHECK_SECRET=$(openssl rand -hex 32)
+```
+
+Turn on `pg_net`, save the same value in Vault, and schedule it (8:00 AM Manila = 00:00 UTC):
+
+```sql
+select vault.create_secret('<the same value>', 'z1_health_secret');
+select cron.schedule('z1-health-check', '0 0 * * *', $$
+  select net.http_post(
+    url := 'https://<project>.supabase.co/functions/v1/integrations',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer <anon key>',
+      'X-Health-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'z1_health_secret')),
+    body := '{}'::jsonb)
+$$);
+```
+
+## Quote requests and insurer scorecard
+
+**Quoting & Proposals** (`/quotes`) tracks every request for a quote that Ask Karla sends to insurers.
+
+- Anyone with `quotes.create` (assistant included) drafts a request: who it is for, the product, and what to quote
+  (ages, benefit limit, room, area). Names, birthdays and ID numbers are refused; census files go straight to the insurer.
+- Quinn, the AI employee, drafts the request for each insurer (email or a short Viber/portal version). Karla
+  (`quotes.approve`) sends it from karla@ask-karla.com and clicks **I sent it**. Each insurer gets a reply-by date
+  (`quote_settings.target_days`, default 2 business days, changed with **Reply-by target**) and, by default, a
+  "Quote from insurer" item in Follow-ups so Felix chases it when it is late.
+- The assistant logs each reply (quoted with the annual premium and plan, or declined). That closes the follow-up.
+- Karla picks the quote that goes into the proposal. The request closes, insurers still waiting are marked not
+  needed and their chases are cancelled. Picks are in the audit log.
+
+The **Insurer scorecard** tab grades each insurer over the last 30 to 365 days, optionally per product: reply rate,
+share answered by the reply-by date, usual turnaround in business days (Manila time), late replies still open,
+chases sent, and how often their quote was picked. Score = 60% on time + 40% reply rate (A 85+, B 70+, C 50+, D);
+insurers with fewer than 3 requests in the period are not graded. The same numbers come from
+`public.quote_scorecard(days, product_line)` and `computeScorecard()` in `src/lib/quotes.ts` (demo).
 
 ## Tests
 
@@ -131,4 +212,8 @@ PGHOST=... PGPORT=... PGUSER=postgres npm run test:db
 
 Runs the migrations against a scratch database with a stand-in `auth` schema and checks
 the rules: domain restriction, forced password change, page and action blocking, self-lockout,
-last Super Admin, no privilege escalation, suspension and the audit log.
+last Super Admin, no privilege escalation, suspension and the audit log. `followups_test.sql` covers the
+follow-up queue (assistant limits, chase counter, escalation, waive/reopen by Karla only, no ID numbers).
+`quotes_test.sql` covers quote requests (only Karla sends and picks, follow-ups open and close with replies,
+withdrawn insurers, grades, period and product filters).
+Pass a test name to run just one: `npm run test:db -- followups_test`.

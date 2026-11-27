@@ -212,13 +212,14 @@
   function sec() { var h = typeof HUMANS_TOP !== "undefined" ? HUMANS_TOP.filter(function (x) { return x.id === "secretary"; })[0] : null; return h || byId("secretary"); }
   function secName() { var x = sec(); return x ? x.n : "Your secretary"; }
   function secBanner(what) {
-    var x = sec();
+    var x = sec(); if (!x) return ""; // no secretary (Paolo removed Liza, 2026-11-26)
     return '<div class="card pad" style="display:flex;gap:10px;align-items:center;margin-bottom:12px">' + (x ? av(x) : "") + '<div><b>Screened by ' + e(secName()) + (x && x.r ? ", " + e(x.r) : "") + '</b><div class="muted small">' + what + ' reach' + (what.slice(-1) === "s" ? "" : "es") + ' you through her. She checks each one is complete, sends incomplete ones back to the sender, and queues the rest here. You still make the final call.</div></div></div>';
   }
   if (typeof apItem === "function") {
     var apItemS = apItem;
     apItem = function (a) {
       var h = apItemS(a), n = e(secName());
+      if (!sec()) return h;
       h = h.replace(/(<div class="r">[\s\S]*?)(<\/div><\/div>)/, "$1 · via " + n + "$2");
       var seen = a.state === "waiting" || a.state === "changes" ? "Checked it's complete and passed it to you" : a.state === "declined" ? "Told the sender it was declined" : "Logged your decision and tracks the send";
       return h.replace('<div><div class="lbl">Pia', '<div><div class="lbl">' + n + "'s routing</div><div class=\"small\">" + seen + '</div></div><div><div class="lbl">Pia')

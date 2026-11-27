@@ -111,11 +111,12 @@ select pg_temp.check((select full_name = 'Assistant One' from profiles where id 
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
 insert into user_permission_overrides values
   ('00000000-0000-0000-0000-00000000000c', 'clients.view', 'deny'),
-  ('00000000-0000-0000-0000-00000000000c', 'reports.export', 'grant');
+  ('00000000-0000-0000-0000-00000000000c', 'quotes.export', 'grant');
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.check((select count(*) = 0 from clients), 'denying the page hides all rows');
 select pg_temp.check(not has_permission('clients.create'), 'denying a page also drops its actions');
-select pg_temp.check(has_permission('reports.export'), 'per-user grant works');
+select pg_temp.check(has_permission('quotes.export'), 'per-user grant works');
+select pg_temp.check(not has_permission('reports.view'), 'assistant preset has no reports');
 
 -- ---------- Delegated admin (Karla) cannot escalate ----------
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
@@ -197,5 +198,140 @@ select pg_temp.check((select jsonb_array_length(my_access()->'permissions') = 0
 select accept_policy('2026-12-01');
 select pg_temp.check(has_permission('clients.view'), 'access returns after accepting');
 reset role;
+
+-- ---------- Integrations ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla, agent
+select pg_temp.check((select count(*) = 0 from integrations), 'non-admins cannot see integrations');
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'pit-abcdefghijklmnop')$$, 'permission');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select accept_policy('2026-12-01');
+set request.jwt.claims = '{"aal":"aal1"}';
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'pit-abcdefghijklmnop')$$, 'permission');
+set request.jwt.claims = '{"aal":"aal2"}';
+select pg_temp.expect_error($$select integration_save('ghl', '{"evil":1}')$$, 'Unknown setting');
+select pg_temp.expect_error($$select integration_save('ghl', '{}', 'short')$$, 'too short');
+select integration_save('ghl', '{"location_id":"loc123"}', 'pit-0000-1111-2222-wxyz', true);
+select pg_temp.check((select status = 'untested' and secret_hint = 'wxyz' and config->>'location_id' = 'loc123'
+  from integrations where id = 'ghl'), 'saved: key hidden, hint kept, needs a test');
+select pg_temp.expect_error($$select secret_id from integrations$$, 'permission denied');
+select pg_temp.expect_error($$select integration_secret('ghl')$$, 'permission denied');
+reset role;
+select pg_temp.check((select integration_secret('ghl') = 'pit-0000-1111-2222-wxyz'), 'server can read the key');
+select integration_record_test('ghl', '00000000-0000-0000-0000-00000000000a', true, null, '{"location":"Ask Karla"}');
+select pg_temp.check((select status = 'connected' from integrations where id = 'ghl'), 'successful test marks connected');
+set role authenticated;
+select integration_disconnect('ghl');
+select pg_temp.check((select status = 'not_connected' and secret_hint is null from integrations where id = 'ghl'),
+  'disconnect clears the integration');
+select pg_temp.expect_error($$select * from vault.secrets$$, 'permission denied');
+reset role;
+select pg_temp.check((select count(*) = 0 from vault.secrets), 'disconnect deletes the stored key');
+select pg_temp.check((select count(*) >= 3 from audit_log where target_type = 'integration'), 'integration changes are audited');
+
+
+-- ---------- GHL webhooks, sync log, retries ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo, aal2
+select integration_save('ghl', '{"location_id":"loc123","sync_contacts":true}', 'pit-0000-1111-2222-wxyz', true);
+create temp table s (v text);
+grant all on s to authenticated;
+insert into s select integration_new_webhook_secret('ghl');
+select pg_temp.check((select v like 'whsec_%' and length(v) = 70 from s), 'webhook secret is generated and shown once');
+select pg_temp.expect_error($$select webhook_secret_hash from integrations$$, 'permission denied');
+select pg_temp.expect_error($$select integration_check_webhook_secret('ghl', 'x')$$, 'permission denied');
+select pg_temp.expect_error($$select ghl_ingest_event('e1', '{}', 'test')$$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.expect_error($$select integration_new_webhook_secret('ghl')$$, 'permission');
+reset role;
+select pg_temp.check((select integration_check_webhook_secret('ghl', v) from s), 'the right secret is accepted');
+select pg_temp.check((select not integration_check_webhook_secret('ghl', v || 'x') from s), 'a wrong secret is refused');
+
+-- marketplace-style event and a workflow-style event
+select ghl_ingest_event('wh-1', '{"type":"ContactCreate","locationId":"loc123","id":"ct-1","firstName":"Liza","lastName":"Soberano","email":"Liza@Example.com","phone":"+639170000009"}', 'ghl_signature');
+select pg_temp.check((select ghl_ingest_event('wh-1', '{"type":"ContactCreate","locationId":"loc123","id":"ct-1","firstName":"Liza"}', 'ghl_signature') is null),
+  'the same event twice is stored once');
+select ghl_ingest_event(null, '{"contact_id":"ct-2","full_name":"Pedro Penduko","email":"pedro@example.com","location":{"id":"loc123"}}', 'webhook_secret');
+select ghl_ingest_event('wh-3', '{"type":"ContactCreate","locationId":"other","id":"ct-3","firstName":"Spy"}', 'ghl_signature');
+select ghl_ingest_event('wh-4', '{"type":"ContactCreate","locationId":"loc123","id":"ct-4"}', 'ghl_signature');
+select ghl_ingest_event('wh-5', '{"type":"InboundMessage","locationId":"loc123"}', 'ghl_signature');
+select pg_temp.check((select summary = 'Liza S.' from integration_events where event_id = 'wh-1'), 'log summary shows first name and initial only');
+select process_integration_events(50, 'webhook');
+select pg_temp.check((select source = 'ghl' and email = 'liza@example.com' from clients where ghl_contact_id = 'ct-1'), 'GHL contact becomes a client');
+select pg_temp.check((select full_name = 'Pedro Penduko' from clients where ghl_contact_id = 'ct-2'), 'workflow webhook contact becomes a client');
+select pg_temp.check((select count(*) = 0 from clients where ghl_contact_id = 'ct-3'), 'events from another sub-account are ignored');
+select pg_temp.check((select status = 'failed' and attempts = 1 from integration_events where event_id = 'wh-4'),
+  'an unusable event fails at once instead of retrying');
+select pg_temp.check((select status = 'ignored' from integration_events where event_id = 'wh-5'), 'unhandled event types are ignored');
+select pg_temp.check((select processed = 5 and succeeded = 2 and ignored = 2 and failed = 1 from integration_runs order by id desc limit 1),
+  'the sync log records the run');
+
+select ghl_ingest_event('wh-6', '{"type":"ContactUpdate","locationId":"loc123","id":"ct-1","phone":"+639170000010"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select phone = '+639170000010' and full_name = 'Liza Soberano' and count(*) over () = 1
+  from clients where ghl_contact_id = 'ct-1'), 'an update changes the same client and keeps other fields');
+select ghl_ingest_event('wh-7', '{"type":"ContactDelete","locationId":"loc123","id":"ct-1"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select count(*) = 1 from clients where ghl_contact_id = 'ct-1'), 'a GHL delete never deletes the client');
+
+-- transient failure: retry with backoff, then give up
+alter table clients add constraint test_block check (full_name <> 'Flaky Contact');
+select ghl_ingest_event('wh-8', '{"type":"ContactCreate","locationId":"loc123","id":"ct-8","firstName":"Flaky","lastName":"Contact"}', 'ghl_signature');
+select process_integration_events();
+select pg_temp.check((select status = 'retrying' and attempts = 1 and next_attempt_at > now() + interval '50 seconds'
+  from integration_events where event_id = 'wh-8'), 'a failed event waits before retrying');
+update integration_events set next_attempt_at = now() where event_id = 'wh-8';
+select process_integration_events();
+select pg_temp.check((select attempts = 2 and next_attempt_at > now() + interval '3 minutes' from integration_events where event_id = 'wh-8'),
+  'the wait grows each time');
+update integration_events set attempts = integration_max_attempts() - 1, next_attempt_at = now() where event_id = 'wh-8';
+select process_integration_events();
+select pg_temp.check((select status = 'failed' from integration_events where event_id = 'wh-8'), 'it stops as failed after the last attempt');
+alter table clients drop constraint test_block;
+
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.check((select count(*) = 0 from integration_events), 'non-admins cannot see the sync log');
+select pg_temp.expect_error($$select integration_retry_event((select max(id) from integration_events))$$, 'permission');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select pg_temp.check((select count(*) >= 8 from integration_events), 'admins can see the sync log');
+select pg_temp.expect_error($$select payload from integration_events$$, 'permission denied');
+select pg_temp.expect_error($$select process_integration_events()$$, 'permission denied');
+select integration_retry_event((select id from integration_events where event_id = 'wh-8'));
+select pg_temp.check((select count(*) = 1 from clients where ghl_contact_id = 'ct-8'), 'Retry processes the event once the problem is fixed');
+select pg_temp.expect_error($$select integration_retry_event((select id from integration_events where event_id = 'wh-1'))$$, 'Only failed');
+reset role;
+update integration_events set received_at = now() - interval '31 days' where event_id = 'wh-1';
+select purge_integration_events();
+select pg_temp.check((select payload = '{}'::jsonb from integration_events where event_id = 'wh-1'), 'old payloads are blanked');
+update integrations set enabled = false where id = 'ghl';
+select ghl_ingest_event('wh-9', '{"type":"ContactCreate","locationId":"loc123","id":"ct-9","firstName":"Later"}', 'ghl_signature');
+select pg_temp.check((select (process_integration_events()->>'paused')::boolean and
+  (select status = 'pending' from integration_events where event_id = 'wh-9')), 'pausing GHL holds events in the queue');
+
+
+-- ---------- Integration alerts ----------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';   -- Paolo
+select integration_save('m365', format('{"tenant_id":"t","client_id":"c","secret_expires_on":"%s"}', current_date + 10)::jsonb,
+                        'm365-secret-value-0000', true);
+create temp table a as select integration_alerts() v;
+select pg_temp.check((select v @> '[{"alert_key":"sync_failed:ghl","severity":"red"}]' from a), 'failed GHL updates raise an alert');
+select pg_temp.check((select v @> '[{"alert_key":"expiry:m365","severity":"amber"}]' from a), 'a Microsoft secret close to expiry raises an alert');
+select pg_temp.check((select not v @> '[{"alert_key":"key_age:ghl"}]' from a), 'a fresh key raises no age alert');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';   -- Karla
+select pg_temp.check((select integration_alerts() = '[]'::jsonb), 'non-admins get no integration alerts');
+select pg_temp.expect_error($$select integration_alerts_to_notify()$$, 'permission denied');
+reset role;
+update integrations set secret_set_at = now() - interval '100 days' where id = 'ghl';
+create temp table n1 as select integration_alerts_to_notify() v;
+select pg_temp.check((select v->'alerts' @> '[{"alert_key":"key_age:ghl"}]' and v->'recipients' ? 'paolo@ask-karla.com' from n1),
+  'the health check emails alerts to the Super Admins');
+select pg_temp.check((select jsonb_array_length(integration_alerts_to_notify()->'alerts') = 0), 'the same alert is not emailed twice in a day');
+update integrations set secret_set_at = now() where id = 'ghl';
+select integration_alerts_to_notify();
+select pg_temp.check((select resolved_at is not null from integration_alert_state where alert_key = 'key_age:ghl'), 'fixed problems are marked resolved');
+update integrations set secret_set_at = now() - interval '100 days' where id = 'ghl';
+select pg_temp.check((select integration_alerts_to_notify()->'alerts' @> '[{"alert_key":"key_age:ghl"}]'), 'a problem that comes back is emailed again');
 
 \echo ALL RBAC TESTS PASSED

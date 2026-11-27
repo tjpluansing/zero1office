@@ -8,6 +8,7 @@ import { HomeRedirect, RequireAuth, RequirePermission } from "./auth/guards";
 import Layout from "./components/Layout";
 import AccessReviewPage from "./pages/admin/AccessReview";
 import AuditLogPage from "./pages/admin/AuditLog";
+import IntegrationsPage from "./pages/admin/Integrations";
 import { AgreementPage, SecurityPage, VerifyCodePage } from "./pages/security";
 import UsersPage from "./pages/admin/Users";
 import {
@@ -16,6 +17,9 @@ import {
 import BillingPage from "./pages/Billing";
 import ClientsPage from "./pages/Clients";
 import OfficePage from "./pages/Office";
+import FollowupsPage from "./pages/Followups";
+import QuotesPage from "./pages/Quotes";
+import ProfilePage from "./pages/Profile";
 import { DashboardPage, ModulePage } from "./pages/Modules";
 
 export default function App() {
@@ -47,16 +51,17 @@ export default function App() {
               <Route path="office" element={<RequirePermission permission="dashboard.view"><OfficePage /></RequirePermission>} />
               <Route path="dashboard" element={<RequirePermission permission="dashboard.view"><DashboardPage /></RequirePermission>} />
               <Route path="clients" element={<RequirePermission permission="clients.view"><ClientsPage /></RequirePermission>} />
-              <Route path="quotes" element={<RequirePermission permission="quotes.view">
-                <ModulePage page="quotes" title="Quoting & Proposals" description="Plan comparisons and proposals for HMO, life, pre-need and non-life." />
-              </RequirePermission>} />
+              <Route path="quotes" element={<RequirePermission permission="quotes.view"><QuotesPage /></RequirePermission>} />
               <Route path="billing" element={<RequirePermission permission="billing.view"><BillingPage /></RequirePermission>} />
+              <Route path="followups" element={<RequirePermission permission="followups.view"><FollowupsPage /></RequirePermission>} />
               <Route path="reports" element={<RequirePermission permission="reports.view">
                 <ModulePage page="reports" title="Reports" description="Production, renewals and pipeline reports." />
               </RequirePermission>} />
               <Route path="admin/users" element={<RequirePermission permission="admin_users.view"><UsersPage /></RequirePermission>} />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="security" element={<SecurityPage />} />
               <Route path="admin/access-review" element={<RequirePermission permission="admin_users.view"><AccessReviewPage /></RequirePermission>} />
+              <Route path="admin/integrations" element={<RequirePermission permission="integrations.view"><IntegrationsPage /></RequirePermission>} />
               <Route path="admin/audit" element={<RequirePermission permission="audit_log.view"><AuditLogPage /></RequirePermission>} />
               <Route path="admin/settings" element={<RequirePermission permission="admin_settings.view">
                 <ModulePage page="admin_settings" title="Admin Settings" description="Allowed email domains, idle sign-out time and integrations." />

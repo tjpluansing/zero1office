@@ -562,4 +562,10 @@
     if (hit) return hit.id;
     var id = "chat-files"; saveFolders(list.concat([{ id: id, name: "Chat files", parent: "" }])); return id;
   };
+  // Subscriptions & expenses receipts (2026-11-26): a top-level folder by name, made if missing.
+  window.Z1Files.folder = function (name, id) {
+    var list = folders(), hit = list.filter(function (x) { return x.name === name && !fById(x.parent); })[0];
+    if (hit) return hit.id;
+    saveFolders(list.concat([{ id: id, name: name, parent: "" }])); return id;
+  };
 })();
