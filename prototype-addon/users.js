@@ -14,6 +14,8 @@
 
   var ITER = 150000, SA = "Super Admin", STAFF = "Staff";
   var ALWAYS = ["profile"], ADMIN_ONLY = ["users", "company"];
+  var HOST = window.Z1Host || null; // set on app.ask-karla.com (hosted/shim.js): Supabase keeps the passwords
+  function viaMicrosoft() { return !!(HOST && HOST.provider === "azure"); }
   var U = { db: null, assets: null, list: [], loaded: false, company: {}, err: "", fails: 0, waitUntil: 0, edit: null, temp: null, busy: false, ptab: "me" };
 
   /* ---------- helpers ---------- */
@@ -65,7 +67,7 @@
   function defaultPages() { var t = NAV.filter(function (g) { return g[0] === "Today"; })[0]; return t ? t[1].map(function (it) { return it[0]; }) : []; }
   function allowed(v) {
     var r = meRec(); if (!r) return true;
-    if (r.mustChange) return v === "profile";
+    if (r.mustChange && !viaMicrosoft()) return v === "profile";
     if (ALWAYS.indexOf(v) > -1) return true;
     if (r.role === SA) return true;
     if (ADMIN_ONLY.indexOf(v) > -1) return false;
@@ -75,7 +77,7 @@
     return !catalog().some(function (c) { return c.key === v; });
   }
   function firstAllowed() {
-    var r = meRec(); if (!r || r.mustChange) return "profile";
+    var r = meRec(); if (!r || (r.mustChange && !viaMicrosoft())) return "profile";
     var c = catalog().filter(function (x) { return allowed(x.key); })[0];
     return c ? c.key : "profile";
   }
@@ -139,7 +141,7 @@
   function showGateState() {
     var card = document.querySelector(".z1-login .card"); if (!card || window.Z1Auth.me()) return;
     var form = document.getElementById("z1LoginForm"), setup = document.getElementById("z1SetupWrap");
-    var needSetup = U.loaded && U.db && !U.list.length;
+    var needSetup = U.loaded && U.db && !U.list.length && !HOST;
     if (needSetup && !setup) {
       setup = document.createElement("div"); setup.id = "z1SetupWrap"; setup.className = "stack"; setup.innerHTML = setupHtml();
       card.appendChild(setup);
@@ -184,7 +186,13 @@
     } else {
       var s = null; try { s = JSON.parse(localStorage.getItem(window.Z1Auth.key) || "null"); } catch (err) { s = null; }
       var r2 = s && s.email ? byEmail(s.email) : null;
-      if (r2 && r2.status !== "suspended" && r2.pw) window.Z1Auth.set(toMe(r2));
+      var hostMe = !!(HOST && HOST.email === (r2 && r2.email));
+      if (hostMe && !U.hostSeen) { // signed in through app.ask-karla.com: note the sign-in once per visit
+        U.hostSeen = true;
+        U.db.doc("z1users/" + keyOf(r2.email)).update({ lastLogin: today() }).catch(function () { /* ignore */ });
+        if (r2.mustChange && !viaMicrosoft()) S.view = "profile";
+      }
+      if (r2 && r2.status !== "suspended" && (r2.pw || hostMe)) window.Z1Auth.set(toMe(r2));
       else showGateState();
     }
   }
@@ -263,7 +271,7 @@
     var pages = catalog().filter(function (c) { return allowed(c.key); });
     var groups = {}; pages.forEach(function (c) { (groups[c.group] = groups[c.group] || []).push(c); });
     return '<div class="ph"><div><h2>My profile</h2><p>Your details as the rest of the team sees them.</p></div></div>' +
-      (r.mustChange ? '<div class="card pad" style="margin-bottom:12px;border-color:var(--gold,#d6a542)"><b>Choose your own password first.</b> <span class="muted">You signed in with a temporary password. The other pages open once you change it below.</span></div>' : "") +
+      (r.mustChange && !viaMicrosoft() ? '<div class="card pad" style="margin-bottom:12px;border-color:var(--gold,#d6a542)"><b>Choose your own password first.</b> <span class="muted">You signed in with a temporary password. The other pages open once you change it below.</span></div>' : "") +
       '<div class="card pad stack" style="max-width:760px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' + avatar(r, 72) +
       '<div style="min-width:0;flex:1"><h3 style="margin:0">' + esc(r.name || r.email) + '</h3><div class="muted small">' + esc(r.email) + " · " + esc(r.role) + (r.title ? " · " + esc(r.title) : "") + "</div></div>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-zu="photo">' + (r.photo ? "Change photo" : "Add photo") + "</button>" + (r.photo ? '<button class="btn" data-zu="nophoto">Remove</button>' : "") + "</div></div>" +
@@ -271,14 +279,15 @@
       '<label class="fld" for="zu-title">Job title<input class="inp" id="zu-title" maxlength="80" placeholder="e.g. Secretary" value="' + esc(r.title || "") + '"></label></div>' +
       '<div class="two"><label class="fld" for="zu-phone">Mobile number<input class="inp" id="zu-phone" type="tel" maxlength="20" placeholder="+63 917 123 4567" value="' + esc(r.phone || "") + '"></label><span></span></div>' +
       '<div><button class="btn pri" type="submit">Save profile</button></div></form></div>' +
+      (viaMicrosoft() ? '<div class="card pad stack" style="max-width:760px;margin-bottom:12px"><h3 style="margin:0">Password</h3><p class="muted small" style="margin:0">You sign in with Microsoft, so your password is your Microsoft 365 password.</p></div>' :
       '<div class="card pad stack" style="max-width:760px;margin-bottom:12px"><h3 style="margin:0">Password</h3>' +
       '<form data-form="z1pw" class="stack"><div class="two"><label class="fld" for="zu-old">Current password<input class="inp" id="zu-old" type="password" autocomplete="current-password"></label><span></span></div>' +
       '<div class="two"><label class="fld" for="zu-new">New password (10+ characters)<input class="inp" id="zu-new" type="password" autocomplete="new-password"></label>' +
       '<label class="fld" for="zu-new2">Type it again<input class="inp" id="zu-new2" type="password" autocomplete="new-password"></label></div>' +
-      '<p class="small" role="alert" id="zu-pwerr" style="color:var(--bad,#c0392b);margin:0"></p><div><button class="btn pri" type="submit">Change password</button></div></form></div>' +
+      '<p class="small" role="alert" id="zu-pwerr" style="color:var(--bad,#c0392b);margin:0"></p><div><button class="btn pri" type="submit">Change password</button></div></form></div>') +
       '<div class="card pad stack" style="max-width:760px"><h3 style="margin:0">Pages you can open</h3>' +
       (r.role === SA ? '<p class="muted small" style="margin:0">You\'re a Super Admin, so you can open every page, plus Users and Company profile.</p>'
-        : r.mustChange ? '<p class="muted small" style="margin:0">They appear once you change your password.</p>'
+        : r.mustChange && !viaMicrosoft() ? '<p class="muted small" style="margin:0">They appear once you change your password.</p>'
         : Object.keys(groups).map(function (g) { return '<div><b class="small">' + esc(g) + '</b><div class="muted small">' + groups[g].map(function (c) { return esc(c.label); }).join(", ") + "</div></div>"; }).join("") +
           '<p class="muted small" style="margin:0">A Super Admin chooses your pages. Ask Paolo or Karla if you need another one.</p>') + "</div>";
   };
@@ -324,7 +333,8 @@
           (u.email === me.email ? "" : '<button class="btn sm" data-zx="reset" data-e="' + esc(u.email) + '">Reset password</button> <button class="btn sm" data-zx="pause" data-e="' + esc(u.email) + '">' + (u.status === "suspended" ? "Unpause" : "Pause") + '</button> <button class="btn sm danger" data-zx="del" data-e="' + esc(u.email) + '">Remove</button>') + "</td></tr>";
       }).join("") + "</table></div>" +
       (supers().length < 2 ? '<p class="small" style="margin:10px 0 0;color:var(--bad,#c0392b)">Only one active Super Admin. Keep a second one so you are never locked out.</p>' : "") +
-      '<p class="muted small" style="margin:10px 0 0">Each person also needs access to this app on claude.ai: Paolo shares it from the Share menu (Contributor lets them upload a profile photo).</p></div>';
+      '<p class="muted small" style="margin:10px 0 0">' + (HOST ? "People sign in at " + esc(location.host) + " with Microsoft, or with the temporary password you give them."
+        : "Each person also needs access to this app on claude.ai: Paolo shares it from the Share menu (Contributor lets them upload a profile photo).") + "</p></div>";
   };
 
   /* ---------- Settings > Company profile ---------- */
@@ -371,15 +381,16 @@
     else if (zx === "copytemp" && U.temp) { (navigator.clipboard ? navigator.clipboard.writeText(U.temp.pw) : Promise.reject()).then(function () { toast("Copied."); }, function () { toast("Select the password and copy it."); }); }
     else if (zx === "reset") { var r = rec(em); if (!r) return;
       ask("Reset " + (r.name || r.email) + "'s password?", "Their current password stops working. You'll get a temporary one to give them.", "Reset", guard(function () {
+        if (HOST) return HOST.admin("password", r.email).then(function (res) { r.mustChange = true; return saveUser(r).then(function () { U.temp = { name: r.name || r.email, email: r.email, pw: res.password }; }); });
         var pw = tempPw(); return makePw(pw).then(function (h) { r.pw = h; r.mustChange = true; return saveUser(r); }).then(function () { U.temp = { name: r.name || r.email, email: r.email, pw: pw }; });
       })); }
     else if (zx === "pause") { var p = rec(em); if (!p) return;
       if (p.status !== "suspended" && p.role === SA && supers().length < 2) { toast("Keep at least one active Super Admin."); return; }
-      guard(function () { p.status = p.status === "suspended" ? "active" : "suspended"; return saveUser(p).then(function () { toast(p.status === "suspended" ? "Paused. They can't sign in." : "Unpaused."); }); })(); }
+      guard(function () { p.status = p.status === "suspended" ? "active" : "suspended"; return (HOST ? HOST.admin(p.status === "suspended" ? "pause" : "unpause", p.email) : Promise.resolve()).then(function () { return saveUser(p); }).then(function () { toast(p.status === "suspended" ? "Paused. They can't sign in." : "Unpaused."); }); })(); }
     else if (zx === "del") { var d = rec(em); if (!d) return;
       if (d.role === SA && supers().length < 2) { toast("Keep at least one active Super Admin."); return; }
       ask("Remove " + (d.name || d.email) + "?", "They won't be able to sign in. Their work in the app stays.", "Remove", guard(function () {
-        return U.db.doc("z1users/" + keyOf(d.email)).delete().then(function () { U.list = U.list.filter(function (x) { return x.email !== d.email; }); dropAsset(d.photo); toast("Removed."); });
+        return (HOST ? HOST.admin("remove", d.email) : Promise.resolve()).then(function () { return U.db.doc("z1users/" + keyOf(d.email)).delete(); }).then(function () { U.list = U.list.filter(function (x) { return x.email !== d.email; }); dropAsset(d.photo); toast("Removed."); });
       })); }
   });
   document.addEventListener("change", function (ev) {
@@ -400,6 +411,7 @@
       if (n1 !== n2) { err.textContent = "The two new passwords don't match."; return; }
       err.textContent = "";
       guard(function () {
+        if (HOST) return HOST.changePassword(old, n1).then(function () { me.mustChange = false; return saveUser(me); }).then(function () { toast("Password changed."); renderNav(); });
         return hashPw(old, me.pw.salt, me.pw.iter).then(function (h) {
           if (h !== me.pw.hash) throw new Error("Your current password is wrong.");
           if (n1 === old) throw new Error("Choose a password different from the current one.");
@@ -416,8 +428,10 @@
       var pages = []; document.querySelectorAll("#zx-pages input[data-pg]").forEach(function (c) { if (c.checked) pages.push(c.getAttribute("data-pg")); });
       var r = Object.assign({}, cur || { email: email, phone: "", photo: "", status: "active", created: today(), lastLogin: "" }, { name: val("zx-name").slice(0, 80) || email.split("@")[0], title: val("zx-title").slice(0, 80), role: role === SA ? SA : STAFF, pages: role === SA ? [] : pages });
       guard(function () {
-        var pw = isNew ? tempPw() : null;
-        return (pw ? makePw(pw).then(function (h) { r.pw = h; r.mustChange = true; }) : Promise.resolve()).then(function () { return saveUser(r); }).then(function () {
+        var pw = isNew && !HOST ? tempPw() : null;
+        if (isNew && HOST) r.mustChange = true;
+        return (pw ? makePw(pw).then(function (h) { r.pw = h; r.mustChange = true; }) : Promise.resolve()).then(function () { return saveUser(r); })
+          .then(function () { if (isNew && HOST) return HOST.admin("password", r.email).then(function (res) { pw = res.password; }); }).then(function () {
           U.edit = null; if (pw) U.temp = { name: r.name, email: r.email, pw: pw }; toast(isNew ? "User added." : "Saved.");
           if (cur && cur.email === me.email) window.Z1Auth.set(toMe(r));
         });
