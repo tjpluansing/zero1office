@@ -520,7 +520,7 @@
   function demoCard() {
     if (H.demo) return '<div class="card pad" id="z1demoCard"><div class="setrow"><div><b>Demo mode</b><div class="muted small">You are looking at the demo: sample activity, no real data. Click LIVE and sign in as a Super Admin to change what the demo shows.</div></div>' + switchHtml(true) + "</div></div>";
     if (!isSuper()) return "";
-    var c = H.demoCfg, pages = demoPages(), groups = {}, order = [];
+    var c = H.demoCfg, pages = H.demoDraft || demoPages(), dirty = !!H.demoDraft, groups = {}, order = [];
     demoCatalog().forEach(function (x) { if (!groups[x.group]) { groups[x.group] = []; order.push(x.group); } groups[x.group].push(x); });
     var boxes = order.map(function (g) {
       return "<h4>" + escH(g) + "</h4>" + groups[g].map(function (x) {
@@ -533,7 +533,10 @@
       (H.demoCfgFrom === "error" ? '<div class="warn">People who aren\'t signed in can\'t read these settings yet, so the demo shows every page. Run <b>hosted/supabase-demo.sql</b> once in Supabase to fix it.</div>' : "") +
       '<div><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><b>Pages in the demo</b><div class="muted small">Ticked pages show in the demo with sample data. Unticked pages are hidden there. Users and Company profile never show in the demo.</div></div>' +
       '<span class="actions" style="margin:0"><button class="btn sm" type="button" data-z1demo="all"' + (c.on ? "" : " disabled") + '>Tick all</button><button class="btn sm" type="button" data-z1demo="none"' + (c.on ? "" : " disabled") + '>Untick all</button><button class="btn sm" type="button" data-z1mode="demo"' + (c.on ? "" : " disabled") + ">Open the demo</button></span></div>" +
-      '<div class="pgs">' + boxes + "</div></div></div>";
+      '<div class="pgs">' + boxes + "</div>" +
+      '<div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">' +
+      (dirty ? '<span class="small" style="color:var(--warn,#B45309);font-weight:600">Not saved yet</span><button class="btn sm" type="button" data-z1demo="cancel">Cancel</button>' : '<span class="muted small">' + pages.length + " pages show in the demo</span>") +
+      '<button class="btn pri" type="button" data-z1demo="save"' + (dirty && c.on ? "" : " disabled") + ">Save pages</button></div></div></div>";
   }
   function saveDemoCfg(next, msg) {
     var prev = H.demoCfg; H.demoCfg = next; try { window.render(); } catch (e) { /* redraw */ }
@@ -558,15 +561,23 @@
     var b = ev.target.closest && ev.target.closest("[data-z1demo]"); if (!b || H.demo || !isSuper()) return;
     var c = H.demoCfg, a = b.getAttribute("data-z1demo");
     if (a === "on") saveDemoCfg({ on: !c.on, pages: c.pages }, c.on ? "Demo mode is off. Visitors go straight to sign in." : "Demo mode is on.");
-    if (a === "all") saveDemoCfg({ on: c.on, pages: demoCatalog().map(function (x) { return x.key; }) }, "Every page shows in the demo.");
-    if (a === "none") saveDemoCfg({ on: c.on, pages: [] }, "No pages show in the demo.");
+    if (a === "all") draft(demoCatalog().map(function (x) { return x.key; }));
+    if (a === "none") draft([]);
+    if (a === "cancel") { H.demoDraft = null; redraw(); }
+    if (a === "save" && H.demoDraft) { var pg = H.demoDraft, n = pg.length; H.demoDraft = null; saveDemoCfg({ on: c.on, pages: pg }, "Saved. " + n + " page" + (n === 1 ? "" : "s") + " show in the demo."); }
   });
   document.addEventListener("change", function (ev) {
     var b = ev.target.closest && ev.target.closest("[data-z1pg]"); if (!b || H.demo || !isSuper()) return;
-    var k = b.getAttribute("data-z1pg"), pages = demoPages().filter(function (x) { return x !== k; });
+    var k = b.getAttribute("data-z1pg"), pages = (H.demoDraft || demoPages()).filter(function (x) { return x !== k; });
     if (b.checked) pages.push(k);
-    saveDemoCfg({ on: H.demoCfg.on, pages: pages }, b.checked ? "Shown in the demo." : "Hidden from the demo.");
+    draft(pages);
   });
+  /* ticks are a draft until Save pages (Paolo, 2026-11-27: "Add save button") */
+  function redraw() { try { window.render(); } catch (e) { /* redraw */ } }
+  function draft(pages) {
+    var saved = demoPages().slice().sort().join(), now = pages.slice().sort().join();
+    H.demoDraft = saved === now ? null : pages; redraw();
+  }
 
   /* scripts are changed only in the demo: the sample clients, proposals and leads that are already in the app's code
      stay in, and the "remove dummy data" clean-up is skipped (Paolo's live data stays sample-free) */

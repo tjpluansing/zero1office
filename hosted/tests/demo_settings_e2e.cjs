@@ -13,7 +13,8 @@ let fails = 0; const ok = (c, m) => { if (!c) fails++; console.log(c ? 'PASS' : 
   await p.click('#z1hGo');
   await p.waitForFunction(() => window.Z1Auth && Z1Auth.me && Z1Auth.me(), null, { timeout: 30000 }); await p.waitForTimeout(1500);
   await p.click('#nav [data-go="settings"]'); await p.waitForTimeout(500);
-  await p.click('#z1demoCard [data-z1pg="clients"]'); await p.waitForTimeout(800);
+  await p.click('#z1demoCard [data-z1pg="clients"]'); await p.waitForTimeout(300);
+  await p.click('#z1demoCard [data-z1demo="save"]'); await p.waitForTimeout(800);
   ok(await p.evaluate(() => !document.querySelector('[data-z1pg="clients"]').checked && !__fakeState.docs['meta/demo'].pages.includes('clients')), 'untick saves');
   await p.reload(); await p.waitForFunction(() => window.Z1Auth && Z1Auth.me && Z1Auth.me(), null, { timeout: 30000 }); await p.waitForTimeout(1500);
   await p.click('#nav [data-go="settings"]'); await p.waitForTimeout(500);
