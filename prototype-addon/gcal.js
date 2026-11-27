@@ -248,6 +248,18 @@
     }, 0);
   }, true);
 
+  // ---------- Top bar pill (Paolo, 2026-11-27: "Make it Status : All clear", in green when nothing needs you) ----------
+  var pill = document.getElementById("needpill");
+  if (pill && window.MutationObserver) {
+    var fixPill = function () {
+      var clear = pill.textContent === "All clear" || pill.textContent === "Status: All clear";
+      if (clear && pill.textContent !== "Status: All clear") pill.textContent = "Status: All clear";
+      pill.style.background = clear ? "var(--ok-soft)" : ""; pill.style.color = clear ? "var(--ok)" : "";
+      pill.title = clear ? "Nothing needs your approval right now" : "Open Approvals";
+    };
+    new MutationObserver(fixPill).observe(pill, { childList: true, characterData: true, subtree: true }); fixPill();
+  }
+
   // ---------- The next 7 days of your main Google calendar, for Dom's live work (every 30 minutes once turned on) ----------
   var U = { list: null, at: 0, busy: false };
   function loadUpcoming() {
