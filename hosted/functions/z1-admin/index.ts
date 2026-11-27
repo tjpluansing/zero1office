@@ -10,6 +10,12 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+// Newer Supabase projects use publishable/secret keys; older ones the anon/service_role keys. Accept either.
+function key(legacy: string, list: string): string {
+  const v = Deno.env.get(legacy);
+  if (v) return v;
+  try { const o = JSON.parse(Deno.env.get(list) ?? "{}"); return o.default ?? Object.values(o)[0] ?? ""; } catch { return ""; }
+}
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
@@ -25,7 +31,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
-  const asCaller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+  const asCaller = createClient(url, key("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS"), { global: { headers: { Authorization: auth } } });
   const { data: isAdmin, error: e1 } = await asCaller.rpc("z1_admin");
   if (e1 || isAdmin !== true) return json({ error: "Only a Super Admin can do this." }, 403);
 
@@ -37,7 +43,7 @@ Deno.serve(async (req) => {
   if (me.user?.email?.toLowerCase() === email && body.action !== "password")
     return json({ error: "You can't do this to your own account." }, 400);
 
-  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const admin = createClient(url, key("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEYS"), { auth: { persistSession: false } });
   // find the sign-in by email (small team: one page is enough)
   const { data: list, error: e2 } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (e2) return json({ error: "Couldn't read sign-ins." }, 500);
