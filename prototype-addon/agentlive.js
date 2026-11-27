@@ -420,6 +420,65 @@
     return { agents: { mateo: mateo }, items: [] };
   });
 
+  /* ---- Gia, Rina, Carlo, Leo and Rex work the small lists in lists.js ---- */
+  function zl(k) { var L = window.Z1Lists && window.Z1Lists[k]; return L ? L : null; }
+  function agoDays(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d || "") ? Math.round((new Date(ymd(new Date()) + "T00:00:00") - new Date(d + "T00:00:00")) / 864e5) : 0; }
+  list.push(function () {
+    var L = zl("enrollments"); if (!L) return {};
+    var open = L.open(), late = open.filter(function (r) { return r.st === "Sent, waiting" && agoDays(r.date) > 7; });
+    var gia = {
+      now: open.length ? "Working on " + plural(open.length, "enrollment") : "No enrollments open",
+      tasks: open.slice(0, 6).map(function (r) {
+        var what = (r.heads ? r.heads + " " : "") + (r.chg || "changes").toLowerCase() + " for " + r.acct;
+        return r.st === "To send" ? "Send " + what + " to " + r.ins : "Follow up " + r.ins + " on " + what;
+      }),
+      k: "Enrollments done", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { gia: gia }, items: late.length ? [{ who: "gia", title: plural(late.length, "enrollment") + " waiting over 7 days", tone: "info", badge: "Enrollment", sub: late.slice(0, 2).map(function (r) { return r.acct + " (" + r.ins + ")"; }).join(", "), path: "view:enrollments" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("loa"); if (!L) return {};
+    var open = L.open(), toSend = open.filter(function (r) { return r.st === "Open"; });
+    var rina = {
+      now: open.length ? "Working on " + plural(open.length, "LOA request") : "No LOA requests open",
+      tasks: open.slice(0, 6).map(function (r) { return (r.st === "Open" ? "Send the LOA request for " : "Chase " + r.ins + " on the LOA for ") + r.what + " (" + r.acct + ")"; }),
+      k: "LOAs closed", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { rina: rina }, items: toSend.length ? [{ who: "rina", title: plural(toSend.length, "LOA request") + " to send", tone: "need", badge: "LOA", sub: toSend.slice(0, 2).map(function (r) { return r.what + " (" + r.acct + ")"; }).join(", "), path: "view:loa" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("partners"); if (!L) return {};
+    var mo = ymd(new Date()).slice(0, 7), MN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][new Date().getMonth()];
+    var act = L.open(), due = act.filter(function (r) { return String(r.date || "").slice(0, 7) !== mo; });
+    var leads = act.reduce(function (n, r) { return n + (+r.leads || 0); }, 0);
+    var carlo = {
+      now: due.length ? "Sending " + MN + " statements to " + plural(due.length, "partner") : act.length ? "Every partner has their " + MN + " statement" : "No referral partners yet",
+      tasks: due.slice(0, 6).map(function (r) { return "Send the " + MN + " statement to " + r.name + (r.leads ? " (" + plural(+r.leads, "lead") + ")" : ""); }),
+      k: "Partner leads this month", kc: leads, kg: Math.max(1, leads),
+    };
+    return { agents: { carlo: carlo }, items: [] };
+  });
+  list.push(function () {
+    var L = zl("applicants"); if (!L) return {};
+    var open = L.open(), fresh = open.filter(function (r) { return r.st === "New"; });
+    var leo = {
+      now: open.length ? "Working with " + plural(open.length, "applicant") : "No applicants open",
+      tasks: open.slice(0, 6).map(function (r) { return (r.st === "New" ? "Screen " : r.st === "Screening" ? "Finish screening " : "Set up the interview with ") + r.name + " (" + (r.role || "applicant").toLowerCase() + ")"; }),
+      k: "Applicants hired", kc: L.rows().filter(function (r) { return r.st === "Hired"; }).length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { leo: leo }, items: fresh.length ? [{ who: "leo", title: plural(fresh.length, "new applicant"), tone: "info", badge: "Hiring", sub: fresh.slice(0, 2).map(function (r) { return r.name; }).join(", "), path: "view:applicants" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("market"); if (!L) return {};
+    var open = L.open();
+    var rex = {
+      now: open.length ? "Looking into " + plural(open.length, "market note") : "No market notes open",
+      tasks: open.slice(0, 6).map(function (r) { return "Look into " + r.what + (r.src ? " (" + r.src + ")" : ""); }),
+      k: "Notes looked into", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { rex: rex }, items: [] };
+  });
+
   /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
   var others = list.slice();
   list.push(function () {
