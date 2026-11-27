@@ -61,3 +61,23 @@ v80 (built, waiting on the office thread's Google publish): App health part 2 in
 - **v90 (2026-11-25):** the Microsoft 365 connector can't attach files, so each brochure or primer can carry a OneDrive link (Add a link, https only, saved once in the db doc `meta/filelinks`) that goes into the draft body above the sign-off. "Save all files (.zip)" saves the unlinked files, the client's proposal PDF always included, as one zip (JSZip 3.10.1).
 
 - **Several calendars and all-day events (2026-11-27, gcal.js rewritten):** the Calendar page has a "Show" row of checkboxes, one per calendar: the Office calendar (the app's own events), every Google calendar that `list_calendars` returns (yours, shared, subscribed), your own Outlook calendar, other calendars in your Outlook by name (`calendarName`, stored in `liveCfg().calNames`), and other people's Outlook calendars (the existing `liveCfg().cal` list, `calendarOwnerEmail`). Ticks are kept in localStorage `zero1office:cal:show`; by default Office, the main Google calendar and your own Outlook calendar are on. Each outside calendar gets its own colour (ev-x0..ev-x7) and its events open in Google or Outlook. Outlook is paged 25 at a time, up to 150 events per month view. Accesses gets a "Calendars" card listing them all with the same checkboxes and Add forms. The Add/Edit event form has an "All day" box (events get `allDay:true`, `tm:"00:00"`), and all-day events from Google and Outlook show on every day they cover. Everything outside the app stays read-only. `window.Z1GCal` (upcoming, on) is unchanged for Dom's live work.
+## Ask Kara, the Jarvis-like assistant (`kara.js`, appended last, after agentlive.js)
+
+Paolo, 2026-11-26: "Yes" to a Jarvis-like assistant; 2026-11-27: "lets go back to making Kara like Jarvis".
+Kara (Chief of Staff, id `aria`) is the assistant: "Ask Kara" in the top bar, Ctrl+K / Cmd+K, or the microphone.
+
+- "Brief me" / "What's pending?": Approvals, Content approvals, Inbox items needing your OK, To do, today and tomorrow's
+  events (office + `window.Z1GCal`), and every live agent's "needs you" rows through `window.Z1Live.build()` (added to
+  addon.js; the same data as "From your trackers"). Rows open their page.
+- "Who's free?", "How's the team?", "What is Nina doing?": from each agent's real status and work (S.team).
+- "Open renewals", "Ask Maya to …" (`giveTask`), "Add to do: …". Kara shows the step and waits for Do it / Enter
+  (a typed "open" runs straight away). Pages are limited to what the person may open (`Z1Users.allowed`).
+- Anything else goes to Claude (sample) with counts, page names and agent names, roles and busy/free only.
+- Speaks up on her own: a daily briefing card the first time each person opens the app each day, and a nudge card
+  when a new approval or a new "needs you" item appears (checked every 30 s). Both can be switched off in the bar.
+- Voice: the dictation capability on claude.ai, else the browser's SpeechRecognition (Chrome, Edge), so the
+  microphone also works on app.ask-karla.com. "Read replies aloud" uses tts if declared, else speechSynthesis.
+- Guardrails: never sends, posts or pays; outbound tasks say they wait in Approvals for Karla; only Super Admins (and
+  the old Agent account) hand out any task, others follow-ups only; every action logged in `zero1office:kara:log:v1`
+  (shared on the hosted app) and Kara's feed. Personal switches use `ak-kara-*` keys (not shared).
+- No capability changes.
