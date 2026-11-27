@@ -31,7 +31,8 @@
   var KARA = "aria", LOG_KEY = "zero1office:kara:log:v1";
   var PREF = { speak: "ak-kara-speak", float: "ak-kara-float", brief: "ak-kara-brief", nudge: "ak-kara-nudge", briefDay: "ak-kara-brief-day" };
   var AI = null, D = null, T = null, mine = false, listening = false, base = "";
-  var K = { open: false, tab: "ask", busy: false, out: null, plan: null };
+  var K = { open: false, tab: "ask", busy: false, out: null, plan: null, offer: null, hist: [] };
+  var convo = false; // hands-free conversation: Kara listens again after she answers (Paolo, 2026-11-27: "converse like a human being")
   function pref(k, def) { try { var v = localStorage.getItem(PREF[k]); return v == null ? def : v === "1"; } catch (err) { return def; } }
   function setPref(k, on) { try { localStorage.setItem(PREF[k], on ? "1" : "0"); } catch (err) { /* optional */ } }
 
@@ -47,6 +48,7 @@
         mine = false; listening = false; paintMic();
         var i = inp(); if (i) { i.value = base; i.focus(); }
         if (base && s.reason !== "not_granted" && s.reason !== "dismissed") run(base, true); // a spoken command runs when you stop talking
+        else if (convo) { convo = false; paint(); } // silence ends the conversation
         return;
       }
       paintMic();
@@ -192,9 +194,75 @@
     return { kind: "team", text: plural(S.team.length, "AI employee") + ": " + act.length + " working on real work, " + idle.length + " free" + (off.length ? ", " + off.length + " offline" : "") + "." + (idle.length ? " Free now: " + idle.slice(0, 8).map(function (x) { return x.n; }).join(", ") + (idle.length > 8 ? " and more" : "") + "." : ""), act: act };
   }
 
+  /* ---------- talking like a person ---------- */
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+  function remember(w, t) { K.hist.push({ w: w, t: String(t || "").slice(0, 300) }); if (K.hist.length > 12) K.hist.shift(); }
+  function hello() { var hr = hour(); return hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening"; }
+  var YES = /^(yes|yeah|yep|yup|sure|ok|okay|alright|go ahead|do it|please|please do|go for it|sounds good|sige|oo|opo)\b/,
+    NO = /^(no|nope|nah|cancel|never mind|nevermind|don t|dont|not now|hindi|wag)\b/;
+  function short(n) { return n.split(" ").length <= 5; }
+  function chatKind(n) {
+    n = n.replace(/^(hey|hi|ok|okay) kara /, "").replace(/ (kara|po)$/, "");
+    if (/^(hi|hello|hey|yo|hiya|good (morning|afternoon|evening|day)|kumusta|kamusta|musta)( kara| there| po)?$/.test(n)) return "hello";
+    if (/\b(how are you|how r u|how s it going|hows it going|how are things|how s your day|hows your day|how is your day|kumusta ka|how you doing)\b/.test(n)) return "how";
+    if (/^(i m|im|i am|i feel|feeling|i m feeling|im feeling)\s+(so so|tired|busy|stressed|bad|sick|exhausted|not (so )?(good|great)|sleepy|overwhelmed)/.test(n)) return "low";
+    if (/^(i m|im|i am|i feel|feeling|doing|all)\s+(good|fine|great|ok|okay|alright|well|doing well|not bad|awesome|good thanks)/.test(n) || /^(good|fine|great|not bad)( thanks| thank you)?$/.test(n)) return "good";
+    if (/^(who are you|what are you|what s your name|whats your name|introduce yourself|tell me about yourself)\b/.test(n)) return "who";
+    if (/^(what can you do|help|help me|how do you work|what do you do|what can i ask)\b/.test(n)) return "help";
+    if (/^(bye|goodbye|good bye|see you|see ya|that s all|thats all|that s it|thats it|i m done|im done|nothing else|no that s all|stop listening|ok bye|good night)\b/.test(n)) return "bye";
+    if (short(n) && /^(thanks|thank you|salamat|ty|thx|great thanks|perfect|cool|nice|awesome|great)( kara| po| so much| a lot)?( thanks| thank you)?$/.test(n)) return "thanks";
+    return null;
+  }
+  function chatOut(k) {
+    var nm = whoName(), act = S.team.filter(function (x) { return x.s === "active"; }).length;
+    if (k === "hello") return pick([hello() + ", " + nm + "! What can I do for you?", "Hi " + nm + "! How can I help?", hello() + ", " + nm + ". What's on your mind?"]);
+    if (k === "how") { K.offer = { brief: 1 }; return pick(["I'm doing great, thanks for asking! ", "Pretty good, thank you! "]) + (act ? act + " of the team are busy on real work right now. " : "") + "How about you?"; }
+    if (k === "good") { K.offer = { brief: 1 }; return pick(["Glad to hear it! ", "Love that. "]) + "Want me to catch you up on what's waiting?"; }
+    if (k === "low") { K.offer = { brief: 1 }; return "Sorry to hear that, " + nm + ". Let me take something off your plate. Want a quick rundown of what's waiting?"; }
+    if (k === "who") return "I'm Kara, your Chief of Staff here at Ask Karla. I keep an eye on the whole team and everything that needs you. I can hand out tasks, open pages and add to-dos. Just talk to me.";
+    if (k === "help") return "Quite a lot! Ask me what's waiting, who's free, or what someone is working on. I can open any page, give one of the team a task, or add a to-do." + (AI ? " And you can ask me anything else in your own words." : "");
+    if (k === "bye") return pick(["Bye " + nm + "! I'll be right here if you need me.", "Okay, talk soon, " + nm + "!"]);
+    return pick(["Anytime, " + nm + ". Anything else?", "You're welcome! Anything else I can do?", "Happy to help. What else?"]);
+  }
+  function spokenPending(P) {
+    var nm = whoName(), it = P.items, s;
+    function line(t) { return String(t).replace(/^([^:]{1,24}): /, function (_, w) { return "from " + w + ", "; }); }
+    if (!it.length) s = pick(["You're all clear, " + nm + ". Nothing's waiting on you right now.", "Good news, " + nm + ": nothing needs you at the moment."]);
+    else {
+      s = it.length === 1 ? "Just one thing for you, " + nm + ". " : pick(["Okay " + nm + ", you've got " + it.length + " things on your plate. ", "Alright " + nm + ", " + it.length + " things need you. "]);
+      var ord = ["First", "Then", "And"];
+      s += it.slice(0, 3).map(function (x, i) { return (it.length === 1 ? line(x.t).charAt(0).toUpperCase() + line(x.t).slice(1) : ord[i] + ", " + line(x.t)) + "."; }).join(" ");
+      if (it.length > 3) s += " There are a few more on your screen.";
+    }
+    var today = P.ev.filter(function (e) { return e.d === P.t0; });
+    if (today.length) s += " On the calendar today: " + today.slice(0, 2).map(function (e) { return e.t + (e.tm && e.tm !== "All day" ? " at " + e.tm : ""); }).join(", and ") + ".";
+    if (it.length && canOpen(it[0].go)) { K.offer = { view: it[0].go }; s += " Want me to open the first one?"; }
+    return s;
+  }
+  function spokenTeam(o) {
+    if (o.kind === "agent") {
+      var e = byId(o.agent); if (!e) return o.text;
+      var now = e.now ? e.now.charAt(0).toLowerCase() + e.now.slice(1) : "";
+      return e.s === "active" ? e.n + "'s busy right now" + (now ? ", working on " + now : "") + "." : e.s === "idle" ? e.n + " is free at the moment, so I can give " + e.n + " something if you like." : e.n + " is offline right now.";
+    }
+    var idle = S.team.filter(function (x) { return x.s === "idle"; });
+    var names = idle.slice(0, 3).map(function (x) { return x.n; });
+    return "Right now " + o.act.length + " of the team are on real work and " + idle.length + " are free" + (names.length ? ", like " + (names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]) : "") + ".";
+  }
+  function role(e) { return String(e.r || "").split(" · ")[0]; }
+  function spokenPlan(pl) {
+    var a = pl.a;
+    if (a.type === "open") return "Want me to open " + pageLabel(a.view) + "?";
+    if (a.type === "todo") return "Sure. Should I add that to your to-do list?";
+    var e = byId(a.id);
+    return "I can hand that to " + e.n + ", our " + role(e) + ". Should I go ahead?" + (pl.guard ? " Don't worry, nothing goes out until Karla approves it." : "");
+  }
+  function answer(o, spoken) { K.out = o; clearInput(); paint(); var t = spoken || o.text; remember("kara", t); speak(t); }
+
   /* ---------- understanding a command ---------- */
   var OUTBOUND = /\b(send|email|e-mail|mail|post|publish|reply|message|text|viber|messenger|call|pay|transfer|submit)\b/;
   function parse(raw) {
+    var c = chatKind(norm(raw)); if (c) return { type: "chat", k: c };
     var q = String(raw || "").trim().replace(/^(hey|hi|ok|okay)?\s*kara[,!.:]?\s*/i, ""), n = norm(q);
     if (!n) return { type: "pending" };
     if (/^(what s|whats|what is|anything|show|give me|any)?\s*(pending|waiting|on my plate|need me|needs me|my day|brief|briefing|status|update|summary)\b/.test(n) || /\b(what s pending|whats pending|what needs me|what do i need|morning brief|catch me up|brief me|plan my day|prep my day)\b/.test(n))
@@ -240,21 +308,26 @@
     logIt(pl.cmd, did);
     try { save(); } catch (err) { /* optional */ }
     try { render(); } catch (err) { /* optional */ }
-    K.plan = null; K.out = { kind: "done", text: "Done. " + did + "." }; paint(); speak(K.out.text);
+    K.plan = null;
+    var e2 = a.type === "task" ? byId(a.id) : null;
+    answer({ kind: "done", text: "Done. " + did + "." }, a.type === "todo" ? pick(["Got it. It's on your to-do list.", "Done, I've added that to your to-do list."]) :
+      e2 ? pick(["Done. " + e2.n + " is on it.", "All set, " + e2.n + " has it now."]) + (OUTBOUND.test(norm(a.text)) ? " It'll wait for Karla's approval before anything goes out." : "") : "");
   }
 
   /* ---------- Claude for everything else ---------- */
   function askClaude(cmd) {
-    if (!AI) { K.out = { kind: "help", text: "I didn't catch that. Try “Brief me”, “Who's free?”, “What is Nina doing?”, “Open billing”, “Ask Maya to compare Maxicare and Medicard for a family of 4” or “Add to do: call Maxicare”." }; paint(); return; }
+    if (!AI) { answer({ kind: "help", text: "I didn't catch that. Try “Brief me”, “Who's free?”, “What is Nina doing?”, “Open billing”, “Ask Maya to compare Maxicare and Medicard for a family of 4” or “Add to do: call Maxicare”." },
+      "Sorry, I didn't quite get that. You can ask me what's waiting, who's free, or ask me to open a page or give someone a task."); return; }
     K.busy = true; paint();
     var P = pending();
     var prompt = "You are Kara, Chief of Staff at Ask Karla (a Philippine HMO and insurance agency; Karla is the licensed agent and the only one who approves anything client-facing). " +
-      "You run the voice and command assistant inside the Zero1Office app, like Jarvis: brief, calm, helpful. The user is " + whoName() + (canAssignAny() ? "" : " (may only hand out follow-ups)") + ". " +
+      "You run the voice assistant inside the Zero1Office app, like Jarvis, and you talk with people out loud. The user is " + whoName() + (canAssignAny() ? "" : " (may only hand out follow-ups)") + ". " +
       "Today is " + new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }) + " in Manila.\n" +
       "Counts from the app's trackers right now: " + JSON.stringify(P.counts) + "\n" +
       "Pages the user can open (id: label): " + pages().map(function (p) { return p.id + ": " + p.label; }).join("; ") + "\n" +
       "AI employees (id: name, role, status): " + S.team.map(function (e) { return e.id + ": " + e.n + ", " + e.r + ", " + (e.s === "active" ? "busy" : e.s === "idle" ? "free" : "offline"); }).join("; ") + "\n\n" +
-      "Rules: reply in 1-3 plain sentences, no markdown. Never claim you sent, posted, paid or emailed anything; you cannot. Client-facing work is a task for the right employee and waits for Karla's approval. " +
+      (K.hist.length > 1 ? "Conversation so far (latest last):\n" + K.hist.slice(0, -1).map(function (x) { return (x.w === "user" ? whoName() : "Kara") + ": " + x.t; }).join("\n") + "\n\n" : "") +
+      "Rules: talk like a warm, natural person in a spoken conversation: contractions, 1-3 short sentences, no lists, no markdown, no emoji; use the user's first name now and then; you may end with a short follow-up question; answer small talk like a friendly colleague. Never claim you sent, posted, paid or emailed anything; you cannot. Client-facing work is a task for the right employee and waits for Karla's approval. " +
       "Never invent numbers, prices, clients or events; use only the counts above. If the request is real work, pick the one best employee (prefer a free one with the right role) and write a short imperative task (max 14 words).\n\n" +
       "Request: " + String(cmd).slice(0, 600) + "\n\n" +
       'Answer with JSON only: {"reply": string, "action": {"type": "open", "view": page id} | {"type": "task", "id": employee id, "text": string} | {"type": "todo", "text": string} | {"type": "pending"} | null}';
@@ -265,53 +338,111 @@
       if (act && act.type === "open" && VIEWS[act.view]) a = { type: "open", view: act.view };
       else if (act && act.type === "task" && byId(act.id) && act.text) a = { type: "task", id: act.id, text: String(act.text).slice(0, 160) };
       else if (act && act.type === "todo" && act.text) a = { type: "todo", text: String(act.text).slice(0, 200) };
-      else if (act && act.type === "pending") { K.out = pendingOut(reply); paint(); speak(K.out.text); return; }
+      else if (act && act.type === "pending") { var o2 = pendingOut(reply); answer(o2, (reply ? reply + " " : "") + spokenPending(o2.P)); return; }
       var pl = planFor(a, cmd);
       if (pl && pl.auto) pl.auto = false; // from Claude, even opening a page waits for Do it
       K.plan = pl && !pl.blocked ? pl : null;
-      if (K.plan) { var i = inp(); if (i) i.value = ""; }
-      K.out = { kind: "ai", text: reply || (pl ? "Here's what I'd do." : "I'm not sure. Try rephrasing."), blocked: pl && pl.blocked };
-      paint(); speak(K.out.text);
+      var r2 = reply || (pl ? "Here's what I'd do." : "I'm not sure. Try rephrasing.");
+      answer({ kind: "ai", text: r2, blocked: pl && pl.blocked }, K.plan && !/\?\s*$/.test(r2) ? r2 + " Should I go ahead?" : r2);
     }).catch(function (err) {
       K.busy = false;
       var c = err && err.code;
       if (c === "not_granted") AI = null;
-      K.out = { kind: "help", text: c === "rate_limited" ? "Give me a moment, then ask again." : c === "not_granted" ? "The AI is switched off for this page, so I can only do the built-in commands: brief you, the team, open a page, give a task, add a to-do." : "I couldn't think that through just now. The built-in commands still work." };
-      paint();
+      answer({ kind: "help", text: c === "rate_limited" ? "Give me a moment, then ask again." : c === "not_granted" ? "The AI is switched off for this page, so I can only do the built-in commands: brief you, the team, open a page, give a task, add a to-do." : "I couldn't think that through just now. The built-in commands still work." });
     });
   }
 
   /* ---------- run ---------- */
   function run(cmd, voiced) {
     cmd = String(cmd || "").trim(); if (!cmd || K.busy) return;
-    base = ""; K.plan = null; K.out = null;
+    base = ""; remember("user", cmd);
+    var n = norm(cmd).replace(/^(hey |hi |ok |okay )?kara /, "");
+    // answering Kara's own question ("Should I go ahead?", "Want me to open it?")
+    if ((K.plan || K.offer) && short(n) && YES.test(n)) {
+      if (K.plan) { doPlan(K.plan); return; }
+      var of = K.offer; K.offer = null;
+      if (of.view) { logIt(cmd, "Opened " + pageLabel(of.view) + " for " + whoName()); convo = false; close(); go(of.view); return; }
+      if (of.brief) { var o0 = pendingOut(); logIt(cmd, "Briefed " + whoName() + " on what's pending"); answer(o0, spokenPending(o0.P)); return; }
+    }
+    if ((K.plan || K.offer) && short(n) && NO.test(n)) { K.plan = null; K.offer = null; answer({ kind: "help", text: "Okay, nothing done." }, pick(["Okay, no problem.", "Sure, I'll leave it."]) + (convo ? " Anything else?" : "")); return; }
+    K.plan = null; K.out = null; K.offer = null;
     var a = parse(cmd);
-    if (a && a.type === "pending") { K.out = pendingOut(); logIt(cmd, "Briefed " + whoName() + " on what's pending"); clearInput(); paint(); speak(K.out.text); return; }
-    if (a && a.type === "team") { K.out = teamOut(a.q || ""); clearInput(); paint(); speak(K.out.text); return; }
+    if (a && a.type === "chat") { if (a.k === "bye") convo = false; answer({ kind: "chat", text: chatOut(a.k) }); return; }
+    if (a && a.type === "pending") { var o = pendingOut(); logIt(cmd, "Briefed " + whoName() + " on what's pending"); answer(o, spokenPending(o.P)); return; }
+    if (a && a.type === "team") { var o1 = teamOut(a.q || ""); answer(o1, spokenTeam(o1)); return; }
     var pl = planFor(a, cmd);
-    if (pl && pl.blocked) { K.out = { kind: "help", text: pl.blocked }; paint(); return; }
+    if (pl && pl.blocked) { answer({ kind: "help", text: pl.blocked }); return; }
     if (pl && pl.auto && !voiced) { doPlan(pl); return; }
-    if (pl) { K.plan = pl; K.out = { kind: "plan", text: "Here's what I'll do. Press Enter or Do it." }; clearInput(); paint(); return; }
+    if (pl) { K.plan = pl; answer({ kind: "plan", text: "Here's what I'll do. Press Enter or Do it, or just say yes." }, spokenPlan(pl)); return; }
     askClaude(cmd);
   }
   function clearInput() { var i = inp(); if (i) i.value = ""; }
 
-  /* ---------- speaking (off by default) ---------- */
+  /* ---------- speaking (on by default since 2026-11-27: "I can't hear Kara") ----------
+     Uses the tts capability where a page has it, else the browser's voice: the most natural English voice the
+     device has (Natural/Neural/Online voices first, a Philippine English one if there is one), said sentence by
+     sentence. Browsers only allow sound after the person has clicked the page, so a briefing that pops up before
+     that is said on the first click. */
+  var VOICE = null, sayGen = 0, sayLater = null;
+  function pickVoice() {
+    try {
+      var vs = speechSynthesis.getVoices() || [];
+      var score = function (v) {
+        var n = v.name + " " + v.lang, s2 = 0;
+        if (!/^en/i.test(v.lang)) return -99;
+        if (/natural|neural|online|premium|enhanced/i.test(n)) s2 += 40;
+        if (/en[-_]PH|Philippines/i.test(n)) s2 += 25;
+        if (/female|Rosa|Aria|Jenny|Ava|Emma|Michelle|Sonia|Libby|Natasha|Samantha|Karen|Moira|Tessa|Serena|Zira|Google US English|Google UK English Female/i.test(n)) s2 += 20;
+        if (/\bmale\b|David|Mark|Guy|Daniel|Fred|Alex|Rishi|James|William|Ryan|Christopher|Eric|Andrew|Brian/i.test(n) && !/female/i.test(n)) s2 -= 30;
+        if (/Google/i.test(n)) s2 += 8;
+        if (/en[-_]US/i.test(v.lang)) s2 += 5;
+        return s2;
+      };
+      return vs.filter(function (v) { return score(v) > -99; }).sort(function (a, b) { return score(b) - score(a); })[0] || null;
+    } catch (err) { return null; }
+  }
+  try { VOICE = pickVoice(); speechSynthesis.addEventListener("voiceschanged", function () { VOICE = pickVoice(); }); } catch (err) { /* no browser voice */ }
+  function sentences(t) {
+    var out = [], cur = "";
+    (String(t).replace(/\s+/g, " ").match(/[^.!?]+[.!?]*["”']?\s*/g) || [t]).forEach(function (x) { x = x.trim(); if (!x) return; if (cur && (cur + " " + x).length > 180) { out.push(cur); cur = x; } else cur = cur ? cur + " " + x : x; });
+    if (cur) out.push(cur); return out;
+  }
+  function activated() { try { return !navigator.userActivation || navigator.userActivation.hasBeenActive; } catch (err) { return true; } }
+  function spokeDone() {
+    if (!convo || !K.open || listening || K.busy) return;
+    setTimeout(function () { if (convo && K.open && !listening && !K.busy) listen(); }, 450);
+  }
   function speak(text, caption) {
     var said = String(text || ""); if (!said) return;
-    var voice = pref("speak", false);
+    var voice = pref("speak", true), gen = ++sayGen;
+    if (voice && !T && !activated()) { sayLater = { said: said, caption: caption, at: Date.now() }; voice = false; }
     talk(caption || said, voice);
-    if (!voice) return;
+    if (!voice) { if (convo) setTimeout(function () { if (gen === sayGen) spokeDone(); }, Math.min(5000, 900 + said.length * 25)); return; }
+    var fin = function () { if (gen !== sayGen) return; talkDone(); spokeDone(); };
     if (T) {
-      T.speak(said.slice(0, 1900)).then(function () { talkDone(); }, function (err) { if (err && err.code === "not_granted") T = null; talkDone(); });
+      T.speak(said.slice(0, 1900)).then(fin, function (err) { if (err && err.code === "not_granted") T = null; fin(); });
       return;
     }
     try {
-      var u = new SpeechSynthesisUtterance(said.slice(0, 600)); u.lang = "en-US";
-      u.onboundary = function () { beat(); }; u.onend = u.onerror = function () { talkDone(); };
-      speechSynthesis.cancel(); speechSynthesis.speak(u);
+      speechSynthesis.cancel();
+      if (!VOICE) VOICE = pickVoice();
+      var parts = sentences(said.slice(0, 1500)), left = parts.length;
+      parts.forEach(function (x) {
+        var u = new SpeechSynthesisUtterance(x);
+        if (VOICE) { u.voice = VOICE; u.lang = VOICE.lang; } else u.lang = "en-US";
+        u.rate = 1.02; u.pitch = 1.05;
+        u.onboundary = function () { if (gen === sayGen) beat(); };
+        u.onend = u.onerror = function () { if (--left === 0) fin(); };
+        speechSynthesis.speak(u);
+      });
     } catch (err) { talkDone(); }
   }
+  // the first click on the page lets the browser speak: say the briefing or nudge that is still on screen
+  document.addEventListener("click", function firstClick() {
+    if (!activated()) return;
+    document.removeEventListener("click", firstClick, true);
+    setTimeout(function () { var x = sayLater; sayLater = null; if (x && Date.now() - x.at < 180000 && !card.hidden && pref("speak", true)) speak(x.said, x.caption); }, 0);
+  }, true);
 
   /* ---------- the floating talking Kara (Paolo, 2026-11-27: "Create a floating talking Kara when she is talking") ----------
      Whenever Kara says something (an answer, the daily briefing, a nudge), her avatar floats up in the corner with a
@@ -387,7 +518,7 @@
   function schedHide() { clearTimeout(tk.hide); tk.hide = setTimeout(function () { if (tk.hover || !tk.el || tk.el.classList.contains("talking")) return; tk.el.hidden = true; }, 7000); }
   function talkHide() { clearInterval(tk.timer); clearTimeout(tk.hide); if (tk.el) { tk.el.hidden = true; tk.el.classList.remove("talking"); } }
 
-  function hush() { try { if (T) T.stop(); else speechSynthesis.cancel(); } catch (err) { /* optional */ } if (tk.el) { tk.voice = false; talkDone(); } }
+  function hush() { sayGen++; try { if (T) T.stop(); else speechSynthesis.cancel(); } catch (err) { /* optional */ } if (tk.el) { tk.voice = false; talkDone(); } }
 
   /* ---------- UI ---------- */
   var css = document.createElement("style");
@@ -400,7 +531,7 @@
     ".z1k-mic{width:38px;flex:none;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);cursor:pointer;display:grid;place-items:center}" +
     ".z1k-mic svg{width:17px;height:17px}.z1k-mic.on{background:var(--bad);border-color:var(--bad);color:#fff}" +
     ".z1k-tabs{display:flex;gap:4px;padding:8px 14px 0}.z1k-bd{padding:12px 14px 14px;display:grid;gap:10px}" +
-    ".z1k-say{font-size:14px;line-height:1.5}" +
+    ".z1k-say{font-size:14px;line-height:1.5}.z1k-live{font-size:12px;font-weight:600;color:var(--ok)}" +
     ".z1k-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:9px 11px;cursor:pointer;font:inherit}" +
     ".z1k-row:hover{border-color:var(--gold)}.z1k-row .t{display:grid;gap:1px;min-width:0}.z1k-row small{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     ".z1k-n{min-width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font:800 12px var(--display);background:var(--bad-soft);color:var(--bad);flex:none}" +
@@ -465,7 +596,7 @@
   }
   function close() {
     if (mine && D) { try { D.stop().catch(function () {}); } catch (err) { /* optional */ } }
-    mine = false; listening = false; K.open = false; K.plan = null; K.out = null; base = ""; clearInput(); scrim.hidden = true; hush();
+    mine = false; listening = false; convo = false; K.open = false; K.plan = null; K.out = null; base = ""; clearInput(); scrim.hidden = true; hush();
     if (lastFocus && lastFocus.focus) try { lastFocus.focus(); } catch (err) { /* optional */ }
   }
   function hour() { return +new Date().toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Manila" }); }
@@ -487,14 +618,15 @@
     var bd = '<div class="z1k-bd">' + (K.tab === "log" ? logHtml() : askHtml()) + "</div>";
     var sw = function (k2, label, def) { return '<label><input type="checkbox" data-z1k="pref" data-v="' + k2 + '"' + (pref(k2, def) ? " checked" : "") + "> " + label + "</label>"; };
     var ft = '<div class="z1k-ft"><span class="z1k-rule">Kara never sends, posts or pays. Client-facing work waits in Approvals for Karla. Every action is logged.</span>' +
-      sw("brief", "Daily briefing", true) + sw("float", "Floating Kara", true) + sw("nudge", "Tell me when something new needs me", true) + sw("speak", "Read replies aloud", false) + "</div>";
+      sw("brief", "Daily briefing", true) + sw("float", "Floating Kara", true) + sw("nudge", "Tell me when something new needs me", true) + sw("speak", "Kara's voice", true) + "</div>";
     box.innerHTML = hd + tabs + bd + ft;
     var ni = inp(); if (ni) ni.value = keep;
     paintMic();
   }
   function askHtml() {
-    if (K.busy) return '<p class="z1k-say muted">Kara is thinking…</p>';
-    var o = K.out, h1 = "";
+    var live1 = convo ? '<p class="z1k-live">● Talking with Kara. She listens again after each answer. Say “bye” to stop.</p>' : "";
+    if (K.busy) return live1 + '<p class="z1k-say muted">Kara is thinking…</p>';
+    var o = K.out, h1 = live1;
     if (o) h1 += '<p class="z1k-say">' + h(o.text) + "</p>";
     if (o && o.blocked) h1 += '<p class="z1k-guard">' + h(o.blocked) + "</p>";
     if (K.plan) h1 += '<div class="z1k-plan"><b>' + h(K.plan.label) + "</b>" + (K.plan.guard ? '<span class="z1k-guard">' + h(K.plan.guard) + "</span>" : "") +
@@ -521,13 +653,13 @@
   /* ---------- Kara speaks up: daily briefing and nudges ---------- */
   var cardFor = null, seenNeeds = null, seenAp = null;
   function hideCard() { card.hidden = true; cardFor = null; }
-  function showCard(title, text, go2, kind) {
+  function showCard(title, text, go2, kind, spoken) {
     if (K.open) return;
     var k = kara();
     card.innerHTML = '<div class="hd">' + (k ? av(k, 26, "xs") : "") + "<b>" + h(title) + '</b><button class="dots" data-z1k="cardx" aria-label="Dismiss">✕</button></div><p>' + h(text) + '</p><div class="actions">' +
       (go2 ? '<button class="btn pri sm" data-z1k="cardgo" data-v="' + h(go2) + '">Open</button>' : "") + '<button class="btn sm" data-z1k="cardopen">Ask Kara</button></div>';
     card.hidden = false; cardFor = kind;
-    speak(title + ". " + text, title);
+    speak(spoken || title + ". " + text, title);
   }
   function signedIn() { return !!me() && !document.body.classList.contains("z1-locked"); }
   function briefing() {
@@ -539,7 +671,8 @@
     var P = pending(), n = P.items.reduce(function (t, x) { return t + x.n; }, 0), today = P.ev.filter(function (e) { return e.d === P.t0; });
     var txt = (n ? (n === 1 ? "1 thing needs" : n + " things need") + " you: " + P.items.slice(0, 3).map(function (x) { return x.t; }).join("; ") + (P.items.length > 3 ? "; and more" : "") + "." : "Nothing needs you right now.") +
       (today.length ? " " + plural(today.length, "event") + " today, first " + today[0].t + (today[0].tm ? " at " + today[0].tm : "") + "." : "");
-    showCard(greet() + " Here's your day", txt, null, "brief");
+    var sp = hello() + "! " + spokenPending(P).replace(" Want me to open the first one?", ""); K.offer = null;
+    showCard(greet() + " Here's your day", txt, null, "brief", sp);
     logIt("(daily briefing)", "Gave " + whoName() + " the daily briefing");
     return true;
   }
@@ -551,8 +684,10 @@
     var newNeeds = P.needs.filter(function (x) { return seenNeeds.indexOf(x.who + "|" + x.title) < 0; });
     seenNeeds = P.needIds; seenAp = P.apIds;
     if (!pref("nudge", true) || K.open || (cardFor === "brief" && !card.hidden)) return;
-    if (newAp.length) { var a = newAp[0], e = byId(a.who); showCard("New approval" + (e ? " from " + e.n : ""), (a.title || "Something is waiting for your OK.") + (newAp.length > 1 ? " (+" + (newAp.length - 1) + " more)" : ""), "approvals", "nudge"); return; }
-    if (newNeeds.length) { var x = newNeeds[0], e2 = byId(x.who); showCard((e2 ? e2.n : "Kara") + " needs you", x.title + (x.sub ? " · " + x.sub : "") + (newNeeds.length > 1 ? " (+" + (newNeeds.length - 1) + " more)" : ""), pathView(x.path), "nudge"); }
+    if (newAp.length) { var a = newAp[0], e = byId(a.who); showCard("New approval" + (e ? " from " + e.n : ""), (a.title || "Something is waiting for your OK.") + (newAp.length > 1 ? " (+" + (newAp.length - 1) + " more)" : ""), "approvals", "nudge",
+      "Heads up, " + whoName() + ". " + (e ? e.n + " just sent" : "There's") + " something for your approval: " + (a.title || "a new item") + "."); return; }
+    if (newNeeds.length) { var x = newNeeds[0], e2 = byId(x.who); showCard((e2 ? e2.n : "Kara") + " needs you", x.title + (x.sub ? " · " + x.sub : "") + (newNeeds.length > 1 ? " (+" + (newNeeds.length - 1) + " more)" : ""), pathView(x.path), "nudge",
+      "Heads up, " + whoName() + ". " + (e2 ? e2.n + " needs you: " : "") + x.title + "."); }
   }
   setTimeout(function () { briefing(); watch(); }, 4000);
   setInterval(function () { if (!briefing()) watch(); }, 30000);
@@ -578,17 +713,22 @@
     else if (a === "mic") {
       if (!D) return;
       if (listening) { D.stop().catch(function () { /* already stopped */ }); return; }
-      var i2 = inp(); base = i2 ? i2.value.trim() : ""; mine = true; listening = true; paintMic(); hush();
-      D.start().catch(function (err) {
-        mine = false; listening = false; paintMic();
-        var c = err && err.code;
-        say(c === "not_granted" ? "Voice is off for this page. Type instead." : c === "no_gesture" ? "Press the microphone again." : "Voice isn't available right now. Type instead.");
-      });
+      convo = true; listen();
     }
+  }
+  function listen() {
+    if (!D || listening) return;
+    var i2 = inp(); base = i2 ? i2.value.trim() : ""; mine = true; listening = true; paintMic(); hush();
+    if (convo) paint();
+    D.start().catch(function (err) {
+      mine = false; listening = false; convo = false; paint();
+      var c = err && err.code;
+      say(c === "not_granted" ? "Voice is off for this page. Type instead." : c === "no_gesture" ? "Press the microphone to keep talking." : "Voice isn't available right now. Type instead.");
+    });
   }
   scrim.addEventListener("click", function (ev) { if (ev.target === scrim) { close(); return; } onClick(ev); });
   card.addEventListener("click", onClick);
-  scrim.addEventListener("submit", function (ev) { ev.preventDefault(); var i = inp(); if (K.plan && i && !i.value.trim()) { doPlan(K.plan); return; } run(i ? i.value : ""); });
+  scrim.addEventListener("submit", function (ev) { ev.preventDefault(); convo = false; var i = inp(); if (K.plan && i && !i.value.trim()) { doPlan(K.plan); return; } run(i ? i.value : ""); });
   document.addEventListener("click", function (ev) { var b = ev.target.closest && ev.target.closest("[data-z1k=open]"); if (b && !scrim.contains(b) && !card.contains(b)) open(); });
   document.addEventListener("keydown", function (ev) {
     if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.key === "k" || ev.key === "K")) { if (!signedIn() && window.Z1Auth) return; ev.preventDefault(); if (K.open) close(); else open(); return; }
