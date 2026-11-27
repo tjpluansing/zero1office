@@ -24,7 +24,8 @@ Keep every password and key in Bitwarden. Never paste the `service_role` key int
    (single tenant, redirect URI from Supabase's Azure provider page). In Supabase turn on the Azure
    provider with its client id, secret and `https://login.microsoftonline.com/<tenant id>` as the URL.
 5. **Server function.** Edge Functions > Deploy a new function > name `z1-admin` > paste
-   `functions/z1-admin/index.ts` > Deploy. Under its secrets add `APP_ORIGIN = https://app.ask-karla.com`.
+   `functions/z1-admin/index.ts` > Deploy. Then in its Settings turn **off** "Verify JWT with legacy secret"
+   (newer projects sign tokens with keys that check rejects; the function checks for a Super Admin itself).
 6. **First password (only if not using Microsoft).** Authentication > Users > Add user >
    `paolo@ask-karla.com` with a password, "Auto confirm" on. After that, add everyone else from
    Settings > Users in the app.
