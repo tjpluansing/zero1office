@@ -484,9 +484,13 @@
 
   /* the DEMO | LIVE switch in the top bar */
   var MODE_CSS = "#z1mode{display:inline-flex;align-items:center;gap:8px;flex:none;min-width:0}" +
-    "#z1mode .sw,#z1h .sw{display:inline-flex;border:1px solid var(--brand,#002C6C);border-radius:999px;overflow:hidden;flex:none}" +
-    "#z1mode .sw button,#z1h .sw button{font:700 11px Inter,system-ui,sans-serif;letter-spacing:.05em;padding:5px 11px;border:0;border-radius:0;background:transparent;color:var(--brand,#002C6C);cursor:pointer;min-height:26px}" +
-    "#z1mode .sw button[aria-pressed=true],#z1h .sw button[aria-pressed=true]{background:var(--brand,#002C6C);color:var(--surface,#fff)}" +
+    "#z1mode .sw,#z1h .sw{display:inline-flex;gap:3px;padding:3px;border:1px solid rgb(127 127 127/.35);border-radius:999px;background:rgb(127 127 127/.12);flex:none}" +
+    "#z1mode .sw button,#z1h .sw button{font:700 11px Inter,system-ui,sans-serif;letter-spacing:.05em;padding:4px 11px;border:0;border-radius:999px;background:transparent;color:#8A94A6;cursor:pointer;min-height:24px;display:inline-flex;align-items:center;gap:6px}" +
+    "#z1mode .sw button:hover,#z1h .sw button:hover{color:inherit}" +
+    "#z1mode .sw button[aria-pressed=true],#z1h .sw button[aria-pressed=true]{cursor:default;box-shadow:0 1px 4px rgb(0 0 0/.25)}" +
+    "#z1mode .sw button[aria-pressed=true]::before,#z1h .sw button[aria-pressed=true]::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}" +
+    "#z1mode .sw [data-z1mode=demo][aria-pressed=true],#z1h .sw [data-z1mode=demo][aria-pressed=true]{background:#F2B705;color:#1F1600}" +
+    "#z1mode .sw [data-z1mode=live][aria-pressed=true],#z1h .sw [data-z1mode=live][aria-pressed=true]{background:#16A34A;color:#fff}" +
     "#z1mode small{font-size:11.5px;color:var(--muted,#5F6B7E);white-space:nowrap}@media (max-width:760px){#z1mode small{display:none}}" +
     "#z1demoCard .pgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px;margin-top:8px}" +
     "#z1demoCard .pgs h4{grid-column:1/-1;margin:8px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#5F6B7E)}" +
@@ -516,7 +520,7 @@
   function demoCard() {
     if (H.demo) return '<div class="card pad" id="z1demoCard"><div class="setrow"><div><b>Demo mode</b><div class="muted small">You are looking at the demo: sample activity, no real data. Click LIVE and sign in as a Super Admin to change what the demo shows.</div></div>' + switchHtml(true) + "</div></div>";
     if (!isSuper()) return "";
-    var c = H.demoCfg, pages = demoPages(), groups = {}, order = [];
+    var c = H.demoCfg, pages = H.demoDraft || demoPages(), dirty = !!H.demoDraft, groups = {}, order = [];
     demoCatalog().forEach(function (x) { if (!groups[x.group]) { groups[x.group] = []; order.push(x.group); } groups[x.group].push(x); });
     var boxes = order.map(function (g) {
       return "<h4>" + escH(g) + "</h4>" + groups[g].map(function (x) {
@@ -529,7 +533,10 @@
       (H.demoCfgFrom === "error" ? '<div class="warn">People who aren\'t signed in can\'t read these settings yet, so the demo shows every page. Run <b>hosted/supabase-demo.sql</b> once in Supabase to fix it.</div>' : "") +
       '<div><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><b>Pages in the demo</b><div class="muted small">Ticked pages show in the demo with sample data. Unticked pages are hidden there. Users and Company profile never show in the demo.</div></div>' +
       '<span class="actions" style="margin:0"><button class="btn sm" type="button" data-z1demo="all"' + (c.on ? "" : " disabled") + '>Tick all</button><button class="btn sm" type="button" data-z1demo="none"' + (c.on ? "" : " disabled") + '>Untick all</button><button class="btn sm" type="button" data-z1mode="demo"' + (c.on ? "" : " disabled") + ">Open the demo</button></span></div>" +
-      '<div class="pgs">' + boxes + "</div></div></div>";
+      '<div class="pgs">' + boxes + "</div>" +
+      '<div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">' +
+      (dirty ? '<span class="small" style="color:var(--warn,#B45309);font-weight:600">Not saved yet</span><button class="btn sm" type="button" data-z1demo="cancel">Cancel</button>' : '<span class="muted small">' + pages.length + " pages show in the demo</span>") +
+      '<button class="btn pri" type="button" data-z1demo="save"' + (dirty && c.on ? "" : " disabled") + ">Save pages</button></div></div></div>";
   }
   function saveDemoCfg(next, msg) {
     var prev = H.demoCfg; H.demoCfg = next; try { window.render(); } catch (e) { /* redraw */ }
@@ -554,15 +561,23 @@
     var b = ev.target.closest && ev.target.closest("[data-z1demo]"); if (!b || H.demo || !isSuper()) return;
     var c = H.demoCfg, a = b.getAttribute("data-z1demo");
     if (a === "on") saveDemoCfg({ on: !c.on, pages: c.pages }, c.on ? "Demo mode is off. Visitors go straight to sign in." : "Demo mode is on.");
-    if (a === "all") saveDemoCfg({ on: c.on, pages: demoCatalog().map(function (x) { return x.key; }) }, "Every page shows in the demo.");
-    if (a === "none") saveDemoCfg({ on: c.on, pages: [] }, "No pages show in the demo.");
+    if (a === "all") draft(demoCatalog().map(function (x) { return x.key; }));
+    if (a === "none") draft([]);
+    if (a === "cancel") { H.demoDraft = null; redraw(); }
+    if (a === "save" && H.demoDraft) { var pg = H.demoDraft, n = pg.length; H.demoDraft = null; saveDemoCfg({ on: c.on, pages: pg }, "Saved. " + n + " page" + (n === 1 ? "" : "s") + " show in the demo."); }
   });
   document.addEventListener("change", function (ev) {
     var b = ev.target.closest && ev.target.closest("[data-z1pg]"); if (!b || H.demo || !isSuper()) return;
-    var k = b.getAttribute("data-z1pg"), pages = demoPages().filter(function (x) { return x !== k; });
+    var k = b.getAttribute("data-z1pg"), pages = (H.demoDraft || demoPages()).filter(function (x) { return x !== k; });
     if (b.checked) pages.push(k);
-    saveDemoCfg({ on: H.demoCfg.on, pages: pages }, b.checked ? "Shown in the demo." : "Hidden from the demo.");
+    draft(pages);
   });
+  /* ticks are a draft until Save pages (Paolo, 2026-11-27: "Add save button") */
+  function redraw() { try { window.render(); } catch (e) { /* redraw */ } }
+  function draft(pages) {
+    var saved = demoPages().slice().sort().join(), now = pages.slice().sort().join();
+    H.demoDraft = saved === now ? null : pages; redraw();
+  }
 
   /* scripts are changed only in the demo: the sample clients, proposals and leads that are already in the app's code
      stay in, and the "remove dummy data" clean-up is skipped (Paolo's live data stays sample-free) */

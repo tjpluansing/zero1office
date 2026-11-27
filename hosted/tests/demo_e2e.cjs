@@ -73,7 +73,9 @@ const { chromium } = require('playwright');
   ok(await p.evaluate(() => !!document.getElementById('z1demoCard')), 'Super Admin sees Demo mode in Settings');
   await p.screenshot({ path: '/tmp/demo-settings.png', fullPage: false });
   await p.evaluate(() => { const c = document.querySelector('[data-z1pg="clients"]'); c.click(); });
-  await p.waitForTimeout(500);
+  await p.waitForTimeout(300);
+  ok(await p.evaluate(() => !(__fakeState.docs['meta/demo'] || {}).pages && document.body.innerText.includes('Not saved yet')), 'a tick waits for Save pages');
+  await click('[data-z1demo="save"]'); await p.waitForTimeout(500);
   ok(await p.evaluate(() => { const d = __fakeState.docs['meta/demo']; return d && Array.isArray(d.pages) && !d.pages.includes('clients') && d.pages.includes('office'); }), 'unticking a page saves the demo page list');
   // reload while signed in stays live
   await p.reload(); await p.waitForFunction(() => window.Z1Auth && Z1Auth.me && Z1Auth.me(), null, { timeout: 30000 }); await p.waitForTimeout(800);
