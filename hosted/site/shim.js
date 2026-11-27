@@ -649,6 +649,7 @@
   /* ---------- Firecrawl for Leads > Find businesses, through the z1-firecrawl server function ---------- */
   // Same answer shape as claude.ai's connector call ({payload}), so the finder needs no other change.
   H.firecrawl = function (tool, input) {
+    if (H.demo) return Promise.reject({ message: "Search isn't available in the demo. Click LIVE and sign in." });
     return H.sb.functions.invoke("z1-firecrawl", { body: { tool: tool, input: input } }).then(function (r) {
       if (r.error) return (r.error.context && r.error.context.json ? r.error.context.json() : Promise.resolve({})).then(function (b) { throw { message: (b && b.error) || "The search failed. Try again." }; }, function () { throw { message: "The search failed. Try again." }; });
       return { payload: r.data };
