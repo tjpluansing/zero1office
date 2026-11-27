@@ -9360,7 +9360,8 @@ body.z1-locked .wrap{visibility:hidden}
   }
 
   function callFirecrawl(tool, input) {
-    var cl = window.claude;
+    var cl = window.claude, host = window.Z1Host;
+    if (host && typeof host.firecrawl === "function") return host.firecrawl(tool, input).then(payload); // app.ask-karla.com
     if (!cl || !cl.use) return Promise.reject({ code: "unavailable_here" });
     return cl.use("mcp").then(function (m) { if (!m) throw { code: "unavailable_here" }; return m.callTool("Firecrawl", tool, input); }).then(payload);
   }
@@ -9452,8 +9453,15 @@ body.z1-locked .wrap{visibility:hidden}
     if (!list.length || F.adding) return;
     F.adding = true; F.msg = ""; render();
     var ok = 0, fail = 0;
+    var localOnly = false;
     cl.use("mcp").then(function (m) {
-      if (!m) throw { code: "unavailable_here" };
+      if (!m) {
+        // app.ask-karla.com has no GoHighLevel connection yet: keep them on the Leads list only
+        if (!window.Z1Host) throw { code: "unavailable_here" };
+        localOnly = true;
+        list.forEach(function (b) { b.saved = true; S.data.found.push(b); if (typeof LEADS !== "undefined") LEADS.push(toLead(b)); ok++; });
+        return;
+      }
       return list.reduce(function (p, b) {
         return p.then(function () {
           var body = { firstName: b.name, companyName: b.name, source: "Zero1Office leads finder", tags: ["lead-finder", SRC_TAG[b.src || "maps"]], country: "PH" };
@@ -9466,7 +9474,7 @@ body.z1-locked .wrap{visibility:hidden}
       }, Promise.resolve());
     }).catch(function () { fail = list.length - ok; }).then(function () {
       F.adding = false; F.pick = {}; save();
-      F.msg = ok ? ok + (ok === 1 ? " business" : " businesses") + " added to GoHighLevel and Leads." + (fail ? " " + fail + " could not be added." : "") : "None could be added. Check GoHighLevel in Accesses.";
+      F.msg = localOnly ? ok + (ok === 1 ? " business" : " businesses") + " added to Leads. GoHighLevel isn't connected on this site yet." : ok ? ok + (ok === 1 ? " business" : " businesses") + " added to GoHighLevel and Leads." + (fail ? " " + fail + " could not be added." : "") : "None could be added. Check GoHighLevel in Accesses.";
       render(); if (ok) toast(F.msg);
     });
   }
@@ -9496,7 +9504,7 @@ body.z1-locked .wrap{visibility:hidden}
             '<td>' + (links.length ? links.join("<br>") : '<span class="muted">none</span>') + '</td>' +
             '<td class="r num">' + (b.rating ? b.rating.toFixed(1) + " (" + b.reviews + ")" : "—") + '</td><td class="r">' + (typeof gbadge === "function" ? gbadge(score(b)) : score(b)) + '</td></tr>';
         }).join("") + '</table></div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn gold" data-lf="add"' + (picked && !F.adding ? "" : " disabled") + '>' + (F.adding ? "Adding…" : "Add " + picked + " to GoHighLevel") + '</button>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn gold" data-lf="add"' + (picked && !F.adding ? "" : " disabled") + '>' + (F.adding ? "Adding…" : "Add " + picked + (window.Z1Host ? " to Leads" : " to GoHighLevel")) + '</button>' +
         (F.more ? '<button class="btn" data-lf="more"' + (F.busy ? " disabled" : "") + '>Search 20 more (10 credits)</button>' : "") +
         '<span class="muted small">Check website finds an email and a hiring page, and raises the score.</span></div>';
     }
