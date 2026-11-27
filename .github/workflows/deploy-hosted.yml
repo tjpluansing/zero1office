@@ -5,8 +5,8 @@
 name: Deploy app.ask-karla.com
 on:
   push:
-    branches: [Primary]
-    paths: ["hosted/site/**"]
+    branches: [Primary, claude/project-thread-wisuux]
+    paths: ["hosted/site/**", ".github/workflows/deploy-hosted.yml"]
   workflow_dispatch:
 concurrency: deploy-hosted
 jobs:
