@@ -381,12 +381,13 @@
   /* ---- Joel, HR & People Lead: AI employees with no real work right now ---- */
   list.push(function () {
     var idle = (S.team || []).filter(function (e) { return !e.human && e.s === "idle"; });
+    var hr = window.Z1HR ? window.Z1HR.next() : [];
     var joel = {
-      now: idle.length ? "Reviewing " + plural(idle.length, "idle AI employee") : "Every AI employee has real work",
-      tasks: idle.slice(0, 6).map(function (e) { return "Check why " + e.n + " is idle: " + (e.now || ""); }),
+      now: hr.length ? "HR: " + hr[0].it[1] : idle.length ? "Reviewing " + plural(idle.length, "idle AI employee") : "Every AI employee has real work",
+      tasks: hr.slice(0, 3).map(function (x) { return x.it[1] + " (" + x.step.t + ")"; }).concat(idle.slice(0, 3).map(function (e) { return "Check why " + e.n + " is idle: " + (e.now || ""); })),
       k: "AI employees with work", kc: (S.team || []).filter(function (e) { return !e.human && e.s === "active"; }).length, kg: Math.max(1, (S.team || []).filter(function (e) { return !e.human; }).length),
     };
-    return { agents: { joel: joel }, items: [] };
+    return { agents: { joel: joel }, items: hr.length ? [{ who: "joel", title: "HR: " + hr[0].it[1], tone: "info", badge: "HR", sub: hr[0].step.t + " · " + plural(hr.length, "step") + " left", path: "view:hr" }] : [] };
   });
 
   /* ---- Ella, Newsletter & Email Writer: Email items in Approvals, and this month's newsletter ---- */
