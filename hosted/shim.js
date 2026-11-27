@@ -58,7 +58,7 @@
     var d = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "srcdoc");
     if (!d || !d.set) return;
     Object.defineProperty(HTMLIFrameElement.prototype, "srcdoc", { configurable: true, enumerable: d.enumerable, get: d.get, set: function (v) {
-      d.set.call(this, "<script>try{(parent.Z1Host||top.Z1Host).patchWin(window)}catch(e){}<\/script>" + v);
+      d.set.call(this, "<script>try{(parent.Z1Host||top.Z1Host).patchWin(window)}catch(e){}<\/script>" + noPaolo(String(v)));
     } });
   }
 
@@ -467,7 +467,7 @@
       { id: "dm_sb1", n: "CRM and pipeline", cat: "Marketing", cost: 5600, cyc: "Monthly", next: t(6), who: "Felix, Owen", pay: "Company card", note: "", on: true },
       { id: "dm_sb2", n: "Email and office apps", cat: "AI & software", cost: 4200, cyc: "Monthly", next: t(12), who: "Everyone", pay: "Company card", note: "", on: true },
       { id: "dm_sb3", n: "Design tool", cat: "Marketing", cost: 6500, cyc: "Yearly", next: t(40), who: "Cora, Iris", pay: "Company card", note: "Two seats, one unused", on: true },
-      { id: "dm_sb4", n: "Website hosting", cat: "Website", cost: 2400, cyc: "Yearly", next: t(90), who: "Paolo", pay: "Company card", note: "", on: true },
+      { id: "dm_sb4", n: "Website hosting", cat: "Website", cost: 2400, cyc: "Yearly", next: t(90), who: "Everyone", pay: "Company card", note: "", on: true },
     ];
     d.expenses = [
       { id: "dm_ex1", x: "Grab to the insurer's office", cat: "Travel & meals", amt: 420, date: t(-1), pay: "GCash", rcpt: true },
@@ -595,6 +595,20 @@
     [/function vSocials\(\)\{return ndEmpty\(/, "function vSocialsNd(){return ndEmpty("],
     [/function vScraped\(\)\{return ndEmpty\(/, "function vScrapedNd(){return ndEmpty("],
   ];
+  /* Paolo is left out of the demo (Paolo, 2026-11-27: "Remove Paolo when in DEMO Mode ... Just remove"):
+     his entry in the people lists and the 3D office goes, and lines that name him drop the name or say "the Admin".
+     Used on the app's scripts and on the 3D office page, in the demo only. */
+  var NO_PAOLO = [
+    [/,\n \{id:"paolo",n:"Paolo",[^\n]*/, ""],      // Agents page: Owners list and org chart
+    [/\n  \{id:"paolo",n:"Paolo",[^\n]*/, ""],      // 3D office: people on Floor 3
+    [/,paolo:"Runs the app[^"]*"/, ""],
+    [/Hi Paolo! /g, "Hi! "], [/Hi Paolo, /g, "Hi, "], [/Good morning, Paolo!/g, "Good morning!"], [/, Paolo\./g, "."],
+    [/Paolo or Karla/g, "Karla"], [/"Paolo, one for your OK"/g, '"One for your OK"'], [/this one's from Paolo\./g, "this one's from you."],
+    [/Paolo's explainers/g, "our explainers"], [/runs on Paolo's PC/g, "runs on the office PC"],
+    [/me\?"Paolo":/g, 'me?"You":'], [/<small>Paolo · host<\/small>/g, "<small>Host</small>"], [/=== "me" \? "Paolo"/g, '=== "me" ? "You"'],
+    [/\bPaolo's\b/g, "the Admin's"], [/\bPaolo\b/g, "the Admin"],
+  ];
+  function noPaolo(txt) { NO_PAOLO.forEach(function (p) { txt = txt.replace(p[0], p[1]); }); return txt; }
   function startDemo() {
     stepDone();
     H.demo = true; H.email = DEMO_EMAIL; H.provider = "demo";
@@ -602,7 +616,7 @@
     patchWin(window); hookFrames(); seedDemo();
     H.ready = true; (H.waiting || []).forEach(function (f) { f(); }); H.waiting = [];
     hideScreen();
-    runApp(DEMO_PATCHES);
+    runApp(DEMO_PATCHES.concat(NO_PAOLO));
     // the visitor is a staff account limited to the pages chosen in Settings > Demo mode
     MEMDB.set("z1users/" + DEMO_EMAIL.replace(/[^a-z0-9]/g, "_"), { email: DEMO_EMAIL, name: "Demo visitor", title: "Sample account", phone: "", photo: "", role: "Staff", status: "active",
       pages: demoPages(), mustChange: false, created: dOff(0), lastLogin: dOff(0) });
