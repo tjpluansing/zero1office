@@ -19,7 +19,7 @@
   healthChecks = function () {
     var list = origChecks.apply(this, arguments);
     if (!live()) return list;
-    var s = sum(), pass = s.on.length > 0 && !s.bad.length && !s.unk;
+    var s = sum(), pass = s.on.length > 0 && !s.bad.length; // "not checked yet" is not a failure
     var note = !s.on.length ? "No connections are switched on. Turn them on in Accesses." :
       s.bad.length ? s.bad.length + " of " + s.on.length + " not connected: " + s.bad.map(function (x) { return x.n; }).join(", ") + ". See Connections below." :
       s.unk ? s.ok + " of " + s.on.length + " connected, " + s.unk + " not checked yet. Press Check now." :

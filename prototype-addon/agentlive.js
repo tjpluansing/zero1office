@@ -479,6 +479,15 @@
     return { agents: { rex: rex }, items: [] };
   });
 
+  /* ---- Client stats, Proposals and Leads: the old "Sample … (not live yet)" headings now sit over empty
+     sections (all sample data was removed), so they name what the section waits for instead. ---- */
+  if (typeof lnSampleNote === "function" && !window.__z1NoSampleNote) {
+    window.__z1NoSampleNote = true;
+    var LN = { "Sample leads from the leads finder (not live yet)": "From the Leads finder", "Sample proposals (not live yet)": "From the Proposal generator", "Sample accounts (not live yet)": "Premiums and members, from Billing & SOA" };
+    var lnOrig = lnSampleNote;
+    lnSampleNote = function (t) { return lnOrig(LN[t] || t); };
+  }
+
   /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
   var others = list.slice();
   list.push(function () {
