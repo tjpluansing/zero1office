@@ -111,7 +111,7 @@
     cl.use("mcp").then(function (m) {
       if (!m) throw { code: "unavailable_here" };
       return m.callTool("GHL", "execute_operation", { operationId: "search-contacts-advanced", reason: "Tess checks new leads for a first message",
-        params: { body: { pageLimit: 50, sort: [{ field: "dateAdded", direction: "desc" }], projection: ["id", "firstName", "lastName", "companyName", "dateAdded", "tags", "dateOfBirth"] } } });
+        params: { body: { pageLimit: 50, sort: [{ field: "dateAdded", direction: "desc" }], projection: ["id", "firstName", "lastName", "companyName", "dateAdded", "tags", "dateOfBirth", "source", "attributionSource"] } } });
     }).then(function (r) { T.busy = false; T.at = Date.now(); T.list = (ghlData(r).contacts || []); },
       function () { T.busy = false; T.at = Date.now(); });
   }
@@ -387,6 +387,37 @@
       k: "AI employees with work", kc: (S.team || []).filter(function (e) { return !e.human && e.s === "active"; }).length, kg: Math.max(1, (S.team || []).filter(function (e) { return !e.human; }).length),
     };
     return { agents: { joel: joel }, items: [] };
+  });
+
+  /* ---- Ella, Newsletter & Email Writer: Email items in Approvals, and this month's newsletter ---- */
+  list.push(function () {
+    var MN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var em = (S.data.approvals || []).filter(function (a) { return !a.pg && a.kind === "Email"; });
+    var open = em.filter(function (a) { return a.state === "waiting" || a.state === "changes"; });
+    var nx = MN[(new Date().getMonth() + 1) % 12], has = em.some(function (a) { return (a.title || "").toLowerCase().indexOf(nx.toLowerCase()) >= 0; });
+    var tasks = open.map(function (a) { return (a.state === "changes" ? "Rewrite “" : "Get your OK on “") + a.title + "”"; });
+    if (!has) tasks.unshift("Draft the " + nx + " newsletter");
+    var ella = {
+      now: !has ? "Drafting the " + nx + " newsletter" : open.length ? "Waiting on " + plural(open.length, "email") + " in Approvals" : "The " + nx + " newsletter is done",
+      tasks: tasks.slice(0, 6),
+      k: "Emails approved", kc: em.filter(function (a) { return a.state === "approved"; }).length, kg: Math.max(1, em.length),
+    };
+    return { agents: { ella: ella }, items: [] };
+  });
+
+  /* ---- Mateo, Ads Specialist: GoHighLevel leads from the last 30 days that came in from ads ---- */
+  list.push(function () {
+    if (!T.list) return {};
+    var src = function (c) { var a = c.attributionSource || {}; return [c.source, a.medium, a.utmSource, a.utmMedium, a.sessionSource, a.adSource].filter(Boolean).join(" ").toLowerCase(); };
+    var m30 = T.list.filter(notEx).filter(function (c) { return new Date(c.dateAdded).getTime() >= Date.now() - 30 * 864e5; });
+    var ads = m30.filter(function (c) { return /facebook|fb|instagram|google|paid|cpc|\bads?\b/.test(src(c)); });
+    var fb = ads.filter(function (c) { return /facebook|fb|instagram/.test(src(c)); }).length;
+    var mateo = {
+      now: ads.length ? "Tracking " + plural(ads.length, "ad lead") + " from the last 30 days" : "No ad leads in the last 30 days",
+      tasks: ads.length ? ["Check cost per lead: " + fb + " from Facebook/Instagram, " + (ads.length - fb) + " from Google and other ads"] : [],
+      k: "Ad leads (30 days)", kc: ads.length, kg: Math.max(1, m30.length),
+    };
+    return { agents: { mateo: mateo }, items: [] };
   });
 
   /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
