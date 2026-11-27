@@ -345,7 +345,9 @@
       if (r.data.session) start(r.data.session);
       else loginScreen(err ? decodeURIComponent(err[1].replace(/\+/g, " ")) : "");
     });
-    H.sb.auth.onAuthStateChange(function (ev, session) { if (ev === "SIGNED_IN" && session) start(session); if (ev === "SIGNED_OUT" && started) location.reload(); });
+    // supabase-js runs this callback while holding its auth lock; calling the client inside it hangs every tab,
+    // so act on the event only after the callback has returned
+    H.sb.auth.onAuthStateChange(function (ev, session) { setTimeout(function () { if (ev === "SIGNED_IN" && session) start(session); if (ev === "SIGNED_OUT" && started) location.reload(); }, 0); });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();
