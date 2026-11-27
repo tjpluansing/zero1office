@@ -19,6 +19,11 @@
 
   /* ---------- small helpers ---------- */
   function $(id) { return document.getElementById(id); }
+  /* last few things that happened during opening, shown on the "taking too long" screen */
+  var DIAG = [], T0 = Date.now();
+  function diag(m) { DIAG.push(((Date.now() - T0) / 1000).toFixed(1) + "s " + String(m).replace(/^GoTrueClient@\d+ \([\d.]+\) \S+ /, "").slice(0, 160)); if (DIAG.length > 40) DIAG.splice(5, 1); }
+  window.addEventListener("error", function (e) { diag("error: " + (e.message || (e.target && (e.target.src || e.target.href)) || "?")); }, true);
+  window.addEventListener("unhandledrejection", function (e) { diag("rejected: " + ((e.reason && e.reason.message) || e.reason)); });
   function escH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function enc(seg) { return SEG_OK.test(seg) ? seg : String(seg).replace(/[^A-Za-z0-9:.-]/g, function (c) { return "_" + c.charCodeAt(0).toString(16) + "_"; }); }
   function dec(seg) { return String(seg).replace(/_([0-9a-f]{1,4})_/g, function (m, h) { return String.fromCharCode(parseInt(h, 16)); }); }
@@ -309,7 +314,9 @@
   }
   function stepDone() { clearTimeout(stepTimer); stepTimer = null; }
   function stuck() {
-    screen('<div><h2>This is taking too long</h2><p>Stuck at: ' + escH(stepName) + '. Check your internet, then try again. If it keeps happening, sign in again.</p></div>' +
+    screen('<div><h2>This is taking too long</h2><p>Stuck at: ' + escH(stepName) + '. Check your internet, then try again. If it keeps happening, sign in again.</p>' +
+      '<p style="font:11px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;background:rgb(127 127 127/.1);padding:8px;border-radius:8px">' +
+      escH("Details for Claude:\n" + navigator.userAgent + "\nlocks:" + !!navigator.locks + " sw:" + ("serviceWorker" in navigator) + " online:" + navigator.onLine + "\n" + DIAG.join("\n")) + '</p></div>' +
       '<button class="pri" type="button" id="z1hRetry">Try again</button><button type="button" id="z1hReset">Sign in again</button>');
     $("z1hRetry").onclick = function () { location.reload(); };
     $("z1hReset").onclick = function () {
@@ -362,7 +369,9 @@
     if (!CFG.url || !CFG.anonKey || !window.supabase) { screen("<div><h2>Setup needed</h2><p>config.js is missing the Supabase Project URL and anon key.</p></div>"); return; }
     // lock: run auth steps directly instead of through the browser's cross-tab lock, which can stay held by a stuck tab
     H.sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce",
+      debug: function () { diag(Array.prototype.slice.call(arguments).map(function (a) { return typeof a === "string" ? a : (a && a.message) || ""; }).join(" ")); },
       lock: function (name, timeout, fn) { return fn(); } } });
+    diag("supabase " + (window.supabase && window.supabase.SupabaseClient ? "loaded" : "?") + ", " + location.href.replace(/[?#].*/, ""));
     step("Checking your sign-in");
     H.sb.auth.getSession().catch(function (e) { return { data: { session: null }, error: e }; }).then(function (r) {
       var err = /error_description=([^&]+)/.exec(location.hash + "&" + location.search);
