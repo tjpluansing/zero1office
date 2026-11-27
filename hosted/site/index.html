@@ -8322,22 +8322,19 @@ body.z1-locked .wrap{visibility:hidden}
 })();
 </script>
 <script type="text/z1-app">
-/* zero1office add-on: several calendars on the Calendar page, with checkboxes, and all-day events
-   (Paolo, 2026-11-25: "Update calendar"; 2026-11-27: "Have the ability to connect multiple calendars under connections.
-   In Calendar have the option to choose which calendar to show using check boxes." and "Add All Day scheduling in Calendar").
-   Sources: the office's own events, every Google calendar the Google Calendar connector lists (yours, shared and
-   subscribed ones), your own Outlook calendar, other named calendars in your Outlook, and other people's Outlook calendars
-   added in Accesses. Everything is read-only: nothing is written to Google or Outlook, and outside events are kept in
-   memory for this visit only. Which calendars are ticked is remembered in this browser. The first load waits for a click,
-   because it asks you to allow the connectors. */
+/* zero1office add-on: calendars on the Calendar page, all-day events and "Other" events, and a simple Accesses page.
+   Paolo, 2026-11-27: the Calendar page shows the office's own events plus ONE connected calendar ("Just 1 connected
+   calendar will do"): the main Google calendar when Calendar (Google) is on in Accesses, otherwise your own Outlook
+   calendar. Accesses shows only each connection's name, status, Check and on/off switch, with no personal data.
+   Read-only: nothing is written to Google or Outlook, and their events are kept in memory for this visit only.
+   The first load waits for a click, because it asks you to allow the connector. */
 (function () {
   if (typeof VIEWS !== "object" || !VIEWS || !VIEWS.calendar || window.__z1GCal) return;
   window.__z1GCal = true;
-  var ONKEY = "zero1office:gcal:on", SHOWKEY = "zero1office:cal:show";
+  var ONKEY = "zero1office:gcal:on";
   var PAL = ["#7c4dff", "#0078d4", "#0b8043", "#e8710a", "#d50000", "#8e24aa", "#00838f", "#795548"];
-  var C = { on: false, show: {}, ev: {}, at: {}, busy: {}, err: {}, gcals: null, glBusy: false, glErr: "" };
+  var C = { on: false, ev: {}, at: {}, busy: {}, err: {} };
   try { C.on = localStorage.getItem(ONKEY) === "1"; } catch (err) { /* optional */ }
-  try { C.show = JSON.parse(localStorage.getItem(SHOWKEY) || "{}") || {}; } catch (err) { C.show = {}; }
   var css = document.createElement("style");
   css.textContent = PAL.map(function (c, i) { return ".ev-x" + i + "{background:" + c + "1f;border-color:" + c + ";color:inherit}"; }).join("") +
     ".ev-gcal{background:#f1eafd;border-color:#7c4dff;color:#4b2a9e}" +
@@ -8355,27 +8352,20 @@ body.z1-locked .wrap{visibility:hidden}
 
   function pad(n) { return String(n).padStart(2, "0"); }
   function mkey() { return S.calY + "-" + S.calM; }
-  function saveShow() { try { localStorage.setItem(SHOWKEY, JSON.stringify(C.show)); } catch (err) { /* optional */ } }
   function claudeOk() { var cl = window.claude; return !!(cl && cl.use); }
   function rowOn(id) { var a = S.data && S.data.accesses; if (!Array.isArray(a)) return true; var r = a.filter(function (x) { return x.id === id; })[0]; return !r || r.on !== false; }
-  function cfg() { var c = typeof liveCfg === "function" ? liveCfg() : (S.data.liveCfg = S.data.liveCfg || {}); if (!Array.isArray(c.cal)) c.cal = []; if (!Array.isArray(c.calNames)) c.calNames = []; return c; }
-  function gList() { var g = window.LIVE_GCAL && Array.isArray(LIVE_GCAL.cals) ? LIVE_GCAL.cals : null; return g || C.gcals; }
   function hid(s) { var h = 0; s = String(s); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
 
-  // Every calendar Zero1Office can show. Office is always there; the others depend on the Accesses rows.
+  // Paolo, 2026-11-27 6:30 PM: "Just 1 connected calendar will do." The Calendar page shows the office's own events plus
+  // one connected calendar: the main Google calendar when Calendar (Google) is on in Accesses, otherwise your own Outlook
+  // calendar when Calendar (Outlook) is on. Switch one off in Accesses to use the other. No calendar list is read.
   function sources() {
-    var out = [{ id: "office", n: "Office calendar", kind: "office", def: true }];
-    if (rowOn("la_gcal")) (gList() || []).forEach(function (c) { out.push({ id: "g:" + c.id, n: c.name + (c.primary ? " (Google, main)" : " (Google)"), kind: "google", cal: c.id, primary: c.primary, def: !!c.primary }); });
-    if (rowOn("la_cal")) {
-      var c = cfg();
-      out.push({ id: "o:me", n: "My Outlook calendar", kind: "outlook", def: true });
-      c.calNames.forEach(function (x) { if (x && x.n) out.push({ id: "on:" + x.n.toLowerCase(), n: x.n + " (Outlook)", kind: "outlook", name: x.n }); });
-      c.cal.forEach(function (x) { if (x && x.e && x.on !== false) out.push({ id: "o:" + x.e, n: (x.label || x.e) + " (Outlook)", kind: "outlook", owner: x.e }); });
-    }
-    var j = 0; out.forEach(function (s) { if (s.kind !== "office") s.ci = j++ % PAL.length; });
+    var out = [{ id: "office", n: "Office calendar", kind: "office" }];
+    if (rowOn("la_gcal")) out.push({ id: "g:primary", n: "Google Calendar", kind: "google", primary: true, ci: 0 });
+    else if (rowOn("la_cal")) out.push({ id: "o:me", n: "Outlook calendar", kind: "outlook", ci: 1 });
     return out;
   }
-  function shown(s) { return C.show[s.id] === undefined ? !!s.def : !!C.show[s.id]; }
+  function shown() { return true; }
 
   // Grid range: the 6 weeks the month view shows.
   function range() {
@@ -8459,17 +8449,6 @@ body.z1-locked .wrap{visibility:hidden}
     return mcp().then(function (m) { return page(m, 0); }).then(function (items) { return outlookEvents(items, s); });
   }
 
-  // Load the Google calendar list once (also fills the Accesses page's list).
-  function loadGList() {
-    if (C.glBusy || gList() || !rowOn("la_gcal")) return Promise.resolve();
-    C.glBusy = true; C.glErr = ""; rer();
-    return mcp().then(function (m) { return m.callTool("Google Calendar", "list_calendars", {}, { cache: false }); }).then(function (r) {
-      var d = typeof liveObj === "function" ? liveObj(r) : (r.payload || {});
-      var cals = typeof liveGCals === "function" ? liveGCals(d) : (d.calendars || d.items || []).map(function (c) { return { id: c.id, name: c.summaryOverride || c.summary || c.id, primary: !!c.primary }; });
-      C.gcals = cals; if (window.LIVE_GCAL) LIVE_GCAL.cals = cals;
-    }, function (err) { C.glErr = errMsg(err, "google"); }).then(function () { C.glBusy = false; rer(); });
-  }
-
   var queue = [], running = false;
   function want(s, force) {
     var k = mkey(), key = s.id + "|" + k;
@@ -8487,8 +8466,8 @@ body.z1-locked .wrap{visibility:hidden}
   function loadAll(force) {
     if (!claudeOk()) { rer(); return; }
     C.on = true; try { localStorage.setItem(ONKEY, "1"); } catch (err) { /* optional */ }
-    if (force) { C.err = {}; C.glErr = ""; }
-    loadGList().then(function () { sources().forEach(function (s) { if (s.kind !== "office" && shown(s)) want(s, force); }); });
+    if (force) C.err = {};
+    sources().forEach(function (s) { if (s.kind !== "office") want(s, force); });
   }
   function rer() { if (S.view === "calendar" || S.view === "accesses") render(); }
   function when(t) { try { return new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }); } catch (err) { return ""; } }
@@ -8500,7 +8479,7 @@ body.z1-locked .wrap{visibility:hidden}
     var k = mkey(), src = sources(), keep = S.data.events || [], ext = [], h;
     // Once turned on, any ticked calendar not loaded for this month yet is fetched (errors wait for Refresh).
     if (C.on && claudeOk()) {
-      var miss = (rowOn("la_gcal") && !gList() && !C.glBusy && !C.glErr) || src.some(function (s) { return s.kind !== "office" && shown(s) && !(C.ev[s.id] && C.ev[s.id][k]) && !C.err[s.id] && !C.busy[s.id + "|" + k]; });
+      var miss = src.some(function (s) { return s.kind !== "office" && shown(s) && !(C.ev[s.id] && C.ev[s.id][k]) && !C.err[s.id] && !C.busy[s.id + "|" + k]; });
       if (miss) setTimeout(function () { loadAll(false); }, 0);
     }
     src.forEach(function (s) { if (s.kind !== "office" && shown(s)) ext = ext.concat(C.ev[s.id] && C.ev[s.id][k] || []); });
@@ -8528,88 +8507,36 @@ body.z1-locked .wrap{visibility:hidden}
     var anyExt = src.length > 1 || rowOn("la_gcal");
     var bar = '<div class="z1g-bar" role="status">';
     var errs = src.filter(function (s) { return C.err[s.id] && shown(s); });
-    if (C.glErr) bar += '<div style="color:var(--bad)">' + esc(C.glErr) + '</div>';
     errs.forEach(function (s) { bar += '<div><b>' + esc(s.n) + ':</b> <span style="color:var(--bad)">' + esc(C.err[s.id]) + '</span></div>'; });
     var acts = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
     if (!claudeOk()) acts += '<span class="muted">Google and Outlook calendars show when Zero1Office is opened in Claude.</span>';
     else if (!C.on && anyExt) acts += '<span class="muted">See your Google and Outlook events here too. Nothing is changed in them.</span><button class="btn sm pri" data-zcal="load">Show my connected calendars</button>';
-    else { var busy = Object.keys(C.busy).length || C.glBusy, n = ext.length, last = Math.max.apply(null, [0].concat(Object.keys(C.at).map(function (x) { return C.at[x]; })));
+    else { var busy = Object.keys(C.busy).length, n = ext.length, last = Math.max.apply(null, [0].concat(Object.keys(C.at).map(function (x) { return C.at[x]; })));
       acts += '<span class="muted">' + (busy ? "Loading calendars…" : n + " outside event" + (n === 1 ? "" : "s") + " on screen · read-only" + (last ? " · updated " + esc(when(last)) : "")) + '</span><button class="btn sm" data-zcal="load"' + (busy ? " disabled" : "") + '>Refresh</button>'; }
-    acts += '<button class="btn sm" data-go="accesses">Choose calendars</button></div>';
+    acts += '</div>';
     bar += acts + '</div>';
     var at = h.indexOf('<div class="cal">');
     return at < 0 ? h + bar : h.slice(0, at) + bar + h.slice(at);
   }
   VIEWS.calendar = vCalendarM;
 
-  // ---------- Accesses: one card listing every calendar ----------
-  var prevAcc = VIEWS.accesses;
-  function calCard() {
-    var src = sources(), gl = gList(), g = rowOn("la_gcal"), o = rowOn("la_cal");
-    var rows = src.map(function (s) {
-      var tag = s.kind === "office" ? "Zero1Office" : s.kind === "google" ? "Google" : "Outlook", sw = s.kind === "office" ? "linear-gradient(135deg,#1E5190 50%,#D3A13B 50%)" : PAL[s.ci];
-      var del = s.id.indexOf("on:") === 0 ? '<button class="btn sm" data-zcal="delname" data-v="' + esc(s.name) + '">Remove</button>' : s.owner ? '<span class="muted small">Remove it under Calendar (Outlook) below</span>' : "";
-      return '<div class="z1c-row"><i class="z1c-sw" style="background:' + sw + '"></i><b style="flex:1;min-width:150px;word-break:break-word">' + esc(s.n.replace(/ \((Google|Outlook)(, main)?\)$/, "")) + (s.primary ? ' <span class="s s-info">Main</span>' : '') + '</b><span class="tag">' + tag + '</span>' +
-        '<label class="z1c-ck small"><input type="checkbox" data-zcal="show" data-id="' + esc(s.id) + '"' + (shown(s) ? " checked" : "") + '>Show on Calendar</label>' + del + '</div>';
-    }).join("");
-    var gnote = !g ? '<div class="muted small">Calendar (Google) is switched off below, so Google calendars are hidden.</div>' :
-      !gl ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span class="muted small">' + (C.glErr ? esc(C.glErr) : "Your Google calendars aren't loaded yet.") + '</span><button class="btn sm" data-zcal="glist"' + (C.glBusy || !claudeOk() ? " disabled" : "") + '>' + (C.glBusy ? "Loading…" : "Load my Google calendars") + '</button></div>' : "";
-    var add = o ? '<div class="lbl" style="margin:12px 0 4px">Add a calendar</div>' +
-      '<div class="small" style="margin-bottom:4px"><b>Someone else\'s Outlook calendar</b> <span class="muted">(they share it with your Microsoft 365 account first)</span></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-oe" type="email" placeholder="e.g. assistant@ask-karla.com" style="flex:2;min-width:180px" aria-label="Their email"><input class="inp" id="z1c-ol" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:110px" aria-label="Label"><button class="btn sm pri" data-zcal="addowner">Add</button></div>' +
-      '<div class="small" style="margin:10px 0 4px"><b>Another calendar in your own Outlook</b> <span class="muted">(for example Birthdays or a team calendar, by its name in Outlook)</span></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-on" placeholder="Calendar name, e.g. Birthdays" maxlength="80" style="flex:2;min-width:180px" aria-label="Calendar name"><button class="btn sm pri" data-zcal="addname">Add</button></div>' :
-      '<div class="muted small" style="margin-top:8px">Calendar (Outlook) is switched off below, so Outlook calendars are hidden.</div>';
-    return '<div class="card pad" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap"><h3 style="margin:0">Calendars · ' + src.length + '</h3><button class="btn sm" data-go="calendar">Open Calendar</button></div>' +
-      '<div class="muted small" style="margin:2px 0 6px">Every calendar Zero1Office can read. Tick the ones to show on the Calendar page (this is the only place to choose them). Read-only: nothing is changed in Google or Outlook.</div>' +
-      rows + gnote + add +
-      '<div class="muted" style="font-size:11px;margin-top:10px"><b>Google:</b> calendars shared with your Google account, and ones you subscribe to in Google Calendar, show up here after you press Load again. <b>Apple iCloud, Yahoo, Zoho and other apps:</b> copy the calendar\'s link from that app, then add it in Google Calendar (Other calendars, From URL) or Outlook (Add calendar, Subscribe from web). It then shows up here.</div></div>';
-  }
-  if (prevAcc) VIEWS.accesses = function () {
-    var h = prevAcc(), at = h.indexOf('<div class="card pad">');
-    return at < 0 ? h + calCard() : h.slice(0, at) + calCard() + h.slice(at);
+  // ---------- Accesses: one line per connection (Paolo, 2026-11-27: "just show Heading of the setting, status, check and
+  // toggle switch. Remove personal data.") No descriptions, sign-in addresses, previews, mailbox, calendar or file lists. ----------
+  if (VIEWS.accesses && typeof liveRows === "function" && typeof liveBadge === "function") VIEWS.accesses = function () {
+    var a = liveRows(), on = a.filter(function (x) { return x.on; }), ok = on.filter(function (x) { return x.st && (x.st.ok || x.st.warn); }).length, busy = window.LIVE_BUSY || {};
+    return '<div class="ph"><div><h2>Accesses</h2><p>Your connections. Check runs a live, read-only test.</p></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm pri" data-act="lacheckall">Check all</button><button class="btn sm" data-go="office">Back to the office</button></div></div>' +
+      '<div class="card pad" style="background:var(--gold-soft);border-color:transparent;margin-bottom:12px"><b>' + ok + ' of ' + on.length + ' switched-on tools connected</b></div>' +
+      '<div class="card pad">' + a.map(function (x) {
+        return '<div class="setrow"><b style="flex:1;min-width:140px">' + esc(x.n) + '</b><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' + liveBadge(x) +
+          (x.on ? '<button class="btn sm" data-act="lacheck" data-id="' + x.id + '"' + (busy[x.id] ? ' disabled' : '') + '>Check</button>' : '') +
+          '<button class="switch" role="switch" aria-checked="' + x.on + '" aria-label="' + esc(x.n) + '" data-act="latoggle" data-id="' + x.id + '"></button></div></div>';
+      }).join("") + '</div>';
   };
 
-  function val(id) { var el = document.getElementById(id); return el ? String(el.value || "").trim() : ""; }
-  document.addEventListener("change", function (ev) {
-    var t = ev.target; if (!t || t.getAttribute("data-zcal") !== "show") return;
-    var id = t.getAttribute("data-id"); C.show[id] = !!t.checked; saveShow();
-    var s = sources().filter(function (x) { return x.id === id; })[0];
-    if (s && s.kind !== "office" && t.checked && claudeOk() && (C.on || S.view === "calendar")) { C.on = true; try { localStorage.setItem(ONKEY, "1"); } catch (err) { /* optional */ } delete C.err[id]; want(s, false); }
-    render();
-  }, true);
   document.addEventListener("click", function (ev) {
-    var b = ev.target && ev.target.closest && ev.target.closest("[data-zcal]"); if (!b || b.tagName === "INPUT") return;
+    var b = ev.target && ev.target.closest && ev.target.closest("[data-zcal]"); if (!b) return;
     ev.preventDefault(); ev.stopPropagation();
-    var a = b.getAttribute("data-zcal"), c = cfg();
-    if (a === "load") { loadAll(true); return; }
-    if (a === "glist") { C.glErr = ""; loadGList(); return; }
-    if (a === "addowner") {
-      var em = val("z1c-oe").toLowerCase(), lb = val("z1c-ol");
-      if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(em)) { toast("Type a full email address."); return; }
-      if (/@gmail\.com$|@yahoo\.|@outlook\.com$|@hotmail\./i.test(em)) { toast("That's a personal address. Share it into Google Calendar or Outlook instead (see the note below)."); return; }
-      if (window.LIVE_ME && em === LIVE_ME) { toast("That's already your own calendar."); return; }
-      if (c.cal.some(function (x) { return x.e === em; })) { toast("Already in the list."); return; }
-      c.cal.push({ e: em, label: lb.slice(0, 40), on: true }); C.show["o:" + em] = true; saveShow(); save();
-      if (typeof liveAcctCheck === "function") liveAcctCheck("cal", em); else render();
-      toast(em + " added. Tick or untick it any time."); return;
-    }
-    if (a === "addname") {
-      var nm = val("z1c-on").replace(/\s+/g, " ");
-      if (!nm) { toast("Type the calendar's name as it shows in Outlook."); return; }
-      if (c.calNames.some(function (x) { return x.n.toLowerCase() === nm.toLowerCase(); })) { toast("Already in the list."); return; }
-      c.calNames.push({ n: nm.slice(0, 80) }); C.show["on:" + nm.toLowerCase()] = true; saveShow(); save(); render();
-      toast(nm + " added."); return;
-    }
-    if (a === "delname") {
-      var v = b.getAttribute("data-v") || "";
-      c.calNames = c.calNames.filter(function (x) { return x.n !== v; }); delete C.show["on:" + v.toLowerCase()]; delete C.ev["on:" + v.toLowerCase()]; saveShow(); save(); render(); toast("Removed. Nothing in Outlook was changed."); return;
-    }
-  }, true);
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key !== "Enter" || !ev.target) return;
-    var m = { "z1c-oe": "addowner", "z1c-ol": "addowner", "z1c-on": "addname" }[ev.target.id];
-    if (m) { ev.preventDefault(); var b = document.querySelector('[data-zcal="' + m + '"]'); if (b) b.click(); }
+    if (b.getAttribute("data-zcal") === "load") loadAll(true);
   }, true);
 
   // ---------- All-day events in the Add / Edit event form ----------
