@@ -39,8 +39,13 @@ python3 hosted/build.py <app page .html> <artifact files folder> dist-hosted
 # put the Project URL and anon key in dist-hosted/config.js
 ```
 
-Zip `dist-hosted` and upload its contents to the `app.ask-karla.com` folder in Hostinger's File Manager
-(keep `.htaccess`). Rebuild and re-upload whenever the claude.ai app changes.
+The live site does not follow claude.ai edits by itself. To update it, build into `hosted/site/` and merge to
+`Primary`: the GitHub Action `deploy-hosted.yml` uploads the changed files to Hostinger by FTP. It needs the
+repository secrets `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, for a Hostinger FTP account whose folder is
+`public_html/app`. It can also be run by hand from Actions > "Deploy app.ask-karla.com" > Run workflow.
+
+Without the Action: zip the folder and upload its contents to `public_html/app` in Hostinger's File Manager
+(keep `.htaccess`).
 
 ## What to know
 
