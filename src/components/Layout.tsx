@@ -74,13 +74,16 @@ export default function Layout() {
         </NavLink>
         <div className="mt-2 rounded-xl bg-white/5 p-3">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-gold/90 text-sm font-semibold text-navy">{initials}</div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-white">{access?.full_name || access?.email}</div>
-              <div className="flex items-center gap-1 text-xs text-white/60">
-                {access?.is_super && <ShieldCheck className="h-3 w-3 text-gold" />}{access?.role_name}
+            <Link to="/profile" onClick={() => setOpen(false)} title="My profile"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold/90 text-sm font-semibold text-navy">{initials}</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-white">{access?.full_name || access?.email}</div>
+                <div className="flex items-center gap-1 text-xs text-white/60">
+                  {access?.is_super && <ShieldCheck className="h-3 w-3 text-gold" />}{access?.role_name}
+                </div>
               </div>
-            </div>
+            </Link>
             <button onClick={() => void signOut()} title="Sign out" aria-label="Sign out"
               className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white">
               <LogOut className="h-4 w-4" />

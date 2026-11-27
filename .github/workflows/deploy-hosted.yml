@@ -1,0 +1,24 @@
+# Uploads hosted/site to app.ask-karla.com (Hostinger) by FTP.
+# Runs when hosted/site changes on Primary, or from Actions > "Deploy app.ask-karla.com" > Run workflow.
+# Needs one repository secret, FTP_PASSWORD, for the Hostinger FTP account u779592699.z1app
+# (its folder is public_html; the app lives in public_html/app).
+name: Deploy app.ask-karla.com
+on:
+  push:
+    branches: [Primary, claude/project-thread-wisuux]
+    paths: ["hosted/site/**", ".github/workflows/deploy-hosted.yml"]
+  workflow_dispatch:
+concurrency: deploy-hosted
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload changed files
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ftp.ask-karla.com
+          username: u779592699.z1app
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./hosted/site/
+          server-dir: ./app/

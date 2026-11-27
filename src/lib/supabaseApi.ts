@@ -5,7 +5,7 @@ import type { FollowupEvent, FollowupRow, FollowupSettings } from "./types";
 import type { QuoteAskRow, QuoteExportRow, QuoteRequestRow, QuoteSettings, ScorecardRow } from "./types";
 import type {
   Access, AccessReviewData, AuditRow, Catalog, ClientRow, DisbursementRow, MfaEnrollment, Override, Policy,
-  SoaEvent, SoaExportRow, SoaRow, UserRow,
+  SoaEvent, SoaExportRow, SoaRow, UserRow, MyProfile,
 } from "./types";
 
 export function createSupabaseApi(): Api {
@@ -70,6 +70,18 @@ export function createSupabaseApi(): Api {
       const { data: s } = await sb.auth.getSession();
       if (!s.session) return null;
       return must(await sb.rpc("my_access")) as Access | null;
+    },
+    async getMyProfile() {
+      const { data: s } = await sb.auth.getSession();
+      if (!s.session) return null;
+      return must(await sb.rpc("my_profile")) as MyProfile | null;
+    },
+    async updateMyProfile(patch) {
+      const { data: s } = await sb.auth.getSession();
+      const uid = s.session?.user.id;
+      if (!uid) throw new Error("Your session has ended. Sign in again.");
+      const rows = must(await sb.from("profiles").update(patch).eq("id", uid).select("id"));
+      if (!rows?.length) throw new Error("Your profile could not be saved.");
     },
 
     async getPolicy() {

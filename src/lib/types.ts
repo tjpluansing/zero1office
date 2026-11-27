@@ -54,6 +54,19 @@ export interface Access {
   mfa_locked: string[];
 }
 
+export interface MyProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  job_title: string;
+  phone: string;
+  role_id: string;
+  role_name: string;
+  is_super: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
 export interface Policy {
   version: string;
   title: string;
