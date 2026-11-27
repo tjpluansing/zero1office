@@ -111,7 +111,7 @@
     cl.use("mcp").then(function (m) {
       if (!m) throw { code: "unavailable_here" };
       return m.callTool("GHL", "execute_operation", { operationId: "search-contacts-advanced", reason: "Tess checks new leads for a first message",
-        params: { body: { pageLimit: 50, sort: [{ field: "dateAdded", direction: "desc" }], projection: ["id", "firstName", "lastName", "companyName", "dateAdded", "tags"] } } });
+        params: { body: { pageLimit: 50, sort: [{ field: "dateAdded", direction: "desc" }], projection: ["id", "firstName", "lastName", "companyName", "dateAdded", "tags", "dateOfBirth", "source", "attributionSource"] } } });
     }).then(function (r) { T.busy = false; T.at = Date.now(); T.list = (ghlData(r).contacts || []); },
       function () { T.busy = false; T.at = Date.now(); });
   }
@@ -196,5 +196,309 @@
     };
     var items = wait.length ? [{ who: "dante", title: plural(wait.length, "post") + " waiting for your OK", tone: "need", badge: "Content", sub: wait.slice(0, 2).map(function (x) { return x.title; }).join(", "), path: "view:content" }] : [];
     return { agents: { dante: dante }, items: items };
+  });
+  /* ---- Proposal writers (Maya, Quinn, Jade, Hana, Theo): Proposal generator proposals waiting for Karla or sent back ---- */
+  function pgAps() { return (S.data.approvals || []).filter(function (a) { return a.pg; }); }
+  // Each proposal writer (Maya, Quinn, Jade, Hana, Theo...) works the proposals the generator assigned to them.
+  // Maya also takes any proposal whose writer is no longer on the team.
+  function propAgent(id) {
+    return function () {
+      var team = (S.team || []).filter(function (e) { return e.d === "Proposals"; }).map(function (e) { return e.id; });
+      var aps = pgAps().filter(function (a) { return a.who === id || (id === "maya" && team.indexOf(a.who) < 0); });
+      var wait = aps.filter(function (a) { return a.state === "waiting"; }), fix = aps.filter(function (a) { return a.state === "changes"; });
+      var e = typeof byId === "function" ? byId(id) : null, what = e && e.r ? e.r.replace(/^.*·\s*/, "") : "";
+      var ag = {
+        now: fix.length ? "Fixing " + plural(fix.length, "proposal") + " Karla sent back" : wait.length ? plural(wait.length, "proposal") + " waiting for Karla's OK" : aps.length ? "No proposal waiting" : "Waiting for a proposal from the Proposal generator",
+        tasks: fix.map(function (a) { return "Redo " + a.title + " with Karla's changes"; }).concat(wait.map(function (a) { return "Get Karla's OK on " + a.title; })).slice(0, 6),
+        k: "Proposals approved", kc: aps.filter(function (a) { return a.state === "approved" || a.state === "sent"; }).length, kg: Math.max(1, aps.length),
+      };
+      var out = {}; out[id] = ag;
+      // Waiting proposals already show in Approvals; the office row only flags ones sent back.
+      return { agents: out, items: fix.length ? [{ who: id, title: plural(fix.length, "proposal") + " sent back for changes", tone: "info", badge: "Proposals", sub: fix.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [] };
+    };
+  }
+  ["maya", "quinn", "jade", "hana", "theo"].forEach(function (id) { list.push(propAgent(id)); });
+
+  /* ---- Pia, Compliance Checker: waiting proposals whose checks flagged something to watch ---- */
+  list.push(function () {
+    var aps = pgAps().filter(function (a) { return a.state === "waiting"; });
+    var flagged = aps.filter(function (a) { return (a.checks || []).some(function (c) { return c[0] !== "ok"; }); });
+    var pia = {
+      now: flagged.length ? "Re-checking " + plural(flagged.length, "proposal") + " with flags" : aps.length ? "Every waiting proposal passed its checks" : "No proposal to check",
+      tasks: flagged.slice(0, 6).map(function (a) { var w = (a.checks || []).filter(function (c) { return c[0] !== "ok"; })[0]; return "Check " + a.title + ": " + String(w ? w[1] : "").slice(0, 80); }),
+      k: "Waiting proposals with clean checks", kc: aps.length - flagged.length, kg: Math.max(1, aps.length),
+    };
+    var items = flagged.length ? [{ who: "pia", title: plural(flagged.length, "proposal") + " flagged by checks", tone: "need", badge: "Check", sub: flagged.slice(0, 2).map(function (a) { return a.title; }).join(", "), path: "view:approvals" }] : [];
+    return { agents: { pia: pia }, items: items };
+  });
+
+  /* ---- Lia (Inbox) and Bea (Messenger/DMs): unread GoHighLevel conversations, read-only, every 10 minutes ---- */
+  var C = { list: null, at: 0, busy: false };
+  function loadConvs() {
+    var cl = window.claude; if (C.busy || Date.now() - C.at < 10 * 60000 || !cl || !cl.use) return;
+    C.busy = true;
+    cl.use("mcp").then(function (m) {
+      if (!m) throw { code: "unavailable_here" };
+      return m.callTool("GHL", "execute_operation", { operationId: "search-conversation", reason: "Lia and Bea check unread messages", params: { query: { limit: 50, status: "unread" } } });
+    }).then(function (r) { C.busy = false; C.at = Date.now(); C.list = ghlData(r).conversations || []; }, function () { C.busy = false; C.at = Date.now(); });
+  }
+  var DM = /^TYPE_(FACEBOOK|INSTAGRAM|WHATSAPP|GMB|LIVE_CHAT)$/;
+  function convAgent(id, isDm, label, page) {
+    return function () {
+      loadConvs();
+      if (!C.list) return {};
+      var un = C.list.filter(function (c) { return (c.unreadCount || 0) > 0 && !/^\(example\)/i.test(String(c.fullName || c.contactName || "")) && DM.test(c.lastMessageType || "") === isDm; });
+      var who = function (c) { return c.fullName || c.contactName || "a contact"; };
+      var ch = function (c) { return String(c.lastMessageType || "").replace("TYPE_", "").toLowerCase().replace(/_/g, " "); };
+      var a = {
+        now: un.length ? "Answering " + plural(un.length, "unread " + label) : "No unread " + label + "s",
+        tasks: un.slice(0, 6).map(function (c) { return "Reply to " + who(c) + " (" + ch(c) + ", " + c.unreadCount + " unread)"; }),
+        k: "Unread " + label + "s", kc: un.length, kg: Math.max(1, un.length),
+      };
+      var out = {}; out[id] = a;
+      return { agents: out, items: un.length ? [{ who: id, title: plural(un.length, "unread " + label), tone: "info", badge: isDm ? "DMs" : "Inbox", sub: un.slice(0, 2).map(who).join(", "), path: "view:" + page }] : [] };
+    };
+  }
+  list.push(convAgent("lia", false, "message", "inbox"));
+  list.push(convAgent("bea", true, "DM", "inbox"));
+
+  /* ---- Fiona, CFO: subscriptions due in the next 7 days and this month's spending ---- */
+  list.push(function () {
+    var pad = function (n) { return String(n).padStart(2, "0"); }, d0 = new Date(), d7 = new Date(d0.getTime() + 7 * 864e5);
+    var t0 = d0.getFullYear() + "-" + pad(d0.getMonth() + 1) + "-" + pad(d0.getDate()), t7 = d7.getFullYear() + "-" + pad(d7.getMonth() + 1) + "-" + pad(d7.getDate()), mk = t0.slice(0, 7);
+    var subs = (S.data.subs || []).filter(function (x) { return x.on !== false && x.next && x.next <= t7; }).sort(function (a, b) { return a.next.localeCompare(b.next); });
+    var spent = (S.data.expenses || []).filter(function (x) { return String(x.date).slice(0, 7) === mk; }).reduce(function (t, x) { return t + (Number(x.amt) || 0); }, 0);
+    var due = subs.reduce(function (t, x) { return t + (Number(x.cost) || 0); }, 0);
+    var fiona = {
+      now: subs.length ? "Lining up " + plural(subs.length, "payment") + " due this week (" + peso(due) + ")" : spent ? "Tracking " + peso(spent) + " spent this month" : "No payments due this week",
+      tasks: subs.slice(0, 6).map(function (x) { return (x.next < t0 ? "Overdue: pay " : "Pay ") + x.n + " (" + peso(x.cost) + ", due " + x.next + ")"; }),
+      k: "Spent this month", kc: Math.round(spent), kg: Math.max(1, Math.round(spent + due)),
+    };
+    var late = subs.filter(function (x) { return x.next < t0; });
+    var items = subs.length ? [{ who: "fiona", title: plural(subs.length, "subscription") + " due this week", tone: late.length ? "need" : "info", badge: peso(due), sub: subs.slice(0, 2).map(function (x) { return x.n + " " + x.next; }).join(", "), path: "view:spend:subs" }] : [];
+    return { agents: { fiona: fiona }, items: items };
+  });
+
+  /* ---- Marco, Chief Sales Officer: open GoHighLevel opportunities, oldest first (read-only, every 15 minutes) ---- */
+  var O = { list: null, at: 0, busy: false };
+  list.push(function () {
+    var cl = window.claude;
+    if (!O.busy && Date.now() - O.at > 15 * 60000 && cl && cl.use) {
+      O.busy = true;
+      cl.use("mcp").then(function (m) {
+        if (!m) throw { code: "unavailable_here" };
+        return m.callTool("GHL", "execute_operation", { operationId: "search-opportunity", reason: "Marco reviews the open pipeline", params: { query: { limit: 50, status: "open" } } });
+      }).then(function (r) { O.busy = false; O.at = Date.now(); O.list = ghlData(r).opportunities || []; }, function () { O.busy = false; O.at = Date.now(); });
+    }
+    if (!O.list) return {};
+    var age = function (o) { var t = new Date(o.lastStageChangeAt || o.updatedAt || o.createdAt).getTime(); return isNaN(t) ? 0 : Math.floor((Date.now() - t) / 864e5); };
+    var opps = O.list.filter(function (o) { return !/^\(example\)/i.test(String(o.name || "")); }).sort(function (a, b) { return age(b) - age(a); });
+    var val = opps.reduce(function (t, o) { return t + (Number(o.monetaryValue) || 0); }, 0);
+    var stuck = opps.filter(function (o) { return age(o) >= 7; });
+    var marco = {
+      now: opps.length ? "Reviewing " + plural(opps.length, "open deal") + (val ? " (" + peso(val) + ")" : "") : "No open deals in GoHighLevel",
+      tasks: opps.slice(0, 6).map(function (o) { return "Move " + (o.name || "a deal") + " forward" + (o.monetaryValue ? " (" + peso(o.monetaryValue) + ")" : "") + (age(o) ? ", no change in " + age(o) + " d" : ""); }),
+      k: "Open deals moving", kc: opps.length - stuck.length, kg: Math.max(1, opps.length),
+    };
+    var items = stuck.length ? [{ who: "marco", title: plural(stuck.length, "deal") + " with no change in 7+ days", tone: "info", badge: "Pipeline", sub: stuck.slice(0, 2).map(function (o) { return o.name; }).join(", "), path: "view:proposals" }] : [];
+    return { agents: { marco: marco }, items: items };
+  });
+
+  var ymd = function (d) { var p2 = function (n) { return String(n).padStart(2, "0"); }; return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()); };
+  var notEx = function (c) { return !/^\(example\)/i.test(String(c.firstNameLowerCase || c.firstName || c.name || c.fullName || "")); };
+
+  /* ---- Joy, Client Celebrations: GoHighLevel contacts with a birthday in the next 7 days ---- */
+  list.push(function () {
+    if (!T.list) return {};
+    var now = new Date(), soon = [];
+    T.list.filter(notEx).forEach(function (c) {
+      if (!c.dateOfBirth) return; var b = new Date(c.dateOfBirth); if (isNaN(b)) return;
+      for (var i = 0; i <= 7; i++) { var d = new Date(now.getTime() + i * 864e5); if (d.getMonth() === b.getUTCMonth() && d.getDate() === b.getUTCDate()) { soon.push({ c: c, i: i }); break; } }
+    });
+    var nm = function (c) { return ((c.firstName || "") + " " + (c.lastName || "")).trim() || "a client"; };
+    var joy = {
+      now: soon.length ? "Preparing " + plural(soon.length, "birthday greeting") : "No client birthdays in the next 7 days",
+      tasks: soon.slice(0, 6).map(function (x) { return "Birthday greeting for " + nm(x.c) + (x.i === 0 ? " (today)" : " (in " + x.i + " d)"); }),
+      k: "Birthdays this week", kc: soon.length, kg: Math.max(1, soon.length),
+    };
+    return { agents: { joy: joy }, items: soon.some(function (x) { return x.i === 0; }) ? [{ who: "joy", title: "Client birthday today", tone: "info", badge: "Greeting", sub: soon.filter(function (x) { return x.i === 0; }).map(function (x) { return nm(x.c); }).join(", "), path: "view:leads" }] : [] };
+  });
+
+  /* ---- Nico, Lead Finder: how many new GoHighLevel leads came in this week (aims for 5) ---- */
+  list.push(function () {
+    if (!T.list) return {};
+    var wk = T.list.filter(notEx).filter(function (c) { return new Date(c.dateAdded).getTime() >= Date.now() - 7 * 864e5; }).length;
+    var nico = {
+      now: wk < 5 ? "Finding more leads: " + plural(wk, "new lead") + " this week, aiming for 5" : plural(wk, "new lead") + " this week",
+      tasks: wk < 5 ? ["Find " + (5 - wk) + " more leads to reach 5 this week"] : [],
+      k: "New leads this week", kc: wk, kg: 5,
+    };
+    return { agents: { nico: nico }, items: [] };
+  });
+
+  /* ---- Ben, Needs Analysis: GoHighLevel deals opened in the last 14 days ---- */
+  list.push(function () {
+    if (!O.list) return {};
+    var fresh = O.list.filter(notEx).filter(function (o) { return new Date(o.createdAt || o.dateAdded || 0).getTime() >= Date.now() - 14 * 864e5; });
+    var ben = {
+      now: fresh.length ? "Preparing needs questions for " + plural(fresh.length, "new deal") : "No new deals to prepare for",
+      tasks: fresh.slice(0, 6).map(function (o) { return "Prepare needs questions for " + (o.name || "a new deal"); }),
+      k: "New deals prepared", kc: 0, kg: Math.max(1, fresh.length),
+    };
+    return { agents: { ben: ben }, items: [] };
+  });
+
+  /* ---- Tina, Documents Archivist: uploads in Files that are not in a folder yet ---- */
+  list.push(function () {
+    var F = window.Z1Files; if (!F || !F.rows || !F.ready || !F.ready()) return {};
+    var loose = F.rows().filter(function (d) { return !d.builtin && !d.folder; });
+    var tina = {
+      now: loose.length ? "Filing " + plural(loose.length, "upload") + " into folders" : "Every file is in a folder",
+      tasks: loose.slice(0, 6).map(function (d) { return "File " + d.name + " into the right folder"; }),
+      k: "Files in folders", kc: F.rows().length - loose.length, kg: Math.max(1, F.rows().length),
+    };
+    return { agents: { tina: tina }, items: loose.length ? [{ who: "tina", title: plural(loose.length, "file") + " not in a folder", tone: "info", badge: "Files", sub: loose.slice(0, 2).map(function (d) { return d.name; }).join(", "), path: "view:files" }] : [] };
+  });
+
+  /* ---- Cora (content plan) and Nadia (Reel scripts): Content approvals ---- */
+  list.push(function () {
+    var posts = S.data.posts || [], t0 = ymd(new Date()), t7 = ymd(new Date(Date.now() + 7 * 864e5));
+    var wk = posts.filter(function (x) { return x.state === "scheduled" && x.date >= t0 && x.date <= t7; });
+    var cora = {
+      now: wk.length < 3 ? "Planning posts: " + plural(wk.length, "post") + " scheduled this week, aiming for 3" : plural(wk.length, "post") + " scheduled this week",
+      tasks: (wk.length < 3 ? ["Plan " + (3 - wk.length) + " more posts for this week"] : []).concat(wk.slice(0, 5).map(function (x) { return "Check “" + x.title + "” goes out " + x.date; })),
+      k: "Posts scheduled this week", kc: wk.length, kg: 3,
+    };
+    var reels = posts.filter(function (x) { return x.fmt === "Reel" && (x.state === "changes" || x.state === "waiting"); });
+    var nadia = {
+      now: reels.length ? "Working on " + plural(reels.length, "Reel script") : "No Reel scripts waiting",
+      tasks: reels.slice(0, 6).map(function (x) { return (x.state === "changes" ? "Rewrite the script for “" : "Get your OK on the script for “") + x.title + "”"; }),
+      k: "Reels approved", kc: posts.filter(function (x) { return x.fmt === "Reel" && x.state === "scheduled"; }).length, kg: Math.max(1, posts.filter(function (x) { return x.fmt === "Reel"; }).length),
+    };
+    return { agents: { cora: cora, nadia: nadia }, items: [] };
+  });
+
+  /* ---- Joel, HR & People Lead: AI employees with no real work right now ---- */
+  list.push(function () {
+    var idle = (S.team || []).filter(function (e) { return !e.human && e.s === "idle"; });
+    var joel = {
+      now: idle.length ? "Reviewing " + plural(idle.length, "idle AI employee") : "Every AI employee has real work",
+      tasks: idle.slice(0, 6).map(function (e) { return "Check why " + e.n + " is idle: " + (e.now || ""); }),
+      k: "AI employees with work", kc: (S.team || []).filter(function (e) { return !e.human && e.s === "active"; }).length, kg: Math.max(1, (S.team || []).filter(function (e) { return !e.human; }).length),
+    };
+    return { agents: { joel: joel }, items: [] };
+  });
+
+  /* ---- Ella, Newsletter & Email Writer: Email items in Approvals, and this month's newsletter ---- */
+  list.push(function () {
+    var MN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var em = (S.data.approvals || []).filter(function (a) { return !a.pg && a.kind === "Email"; });
+    var open = em.filter(function (a) { return a.state === "waiting" || a.state === "changes"; });
+    var nx = MN[(new Date().getMonth() + 1) % 12], has = em.some(function (a) { return (a.title || "").toLowerCase().indexOf(nx.toLowerCase()) >= 0; });
+    var tasks = open.map(function (a) { return (a.state === "changes" ? "Rewrite “" : "Get your OK on “") + a.title + "”"; });
+    if (!has) tasks.unshift("Draft the " + nx + " newsletter");
+    var ella = {
+      now: !has ? "Drafting the " + nx + " newsletter" : open.length ? "Waiting on " + plural(open.length, "email") + " in Approvals" : "The " + nx + " newsletter is done",
+      tasks: tasks.slice(0, 6),
+      k: "Emails approved", kc: em.filter(function (a) { return a.state === "approved"; }).length, kg: Math.max(1, em.length),
+    };
+    return { agents: { ella: ella }, items: [] };
+  });
+
+  /* ---- Mateo, Ads Specialist: GoHighLevel leads from the last 30 days that came in from ads ---- */
+  list.push(function () {
+    if (!T.list) return {};
+    var src = function (c) { var a = c.attributionSource || {}; return [c.source, a.medium, a.utmSource, a.utmMedium, a.sessionSource, a.adSource].filter(Boolean).join(" ").toLowerCase(); };
+    var m30 = T.list.filter(notEx).filter(function (c) { return new Date(c.dateAdded).getTime() >= Date.now() - 30 * 864e5; });
+    var ads = m30.filter(function (c) { return /facebook|fb|instagram|google|paid|cpc|\bads?\b/.test(src(c)); });
+    var fb = ads.filter(function (c) { return /facebook|fb|instagram/.test(src(c)); }).length;
+    var mateo = {
+      now: ads.length ? "Tracking " + plural(ads.length, "ad lead") + " from the last 30 days" : "No ad leads in the last 30 days",
+      tasks: ads.length ? ["Check cost per lead: " + fb + " from Facebook/Instagram, " + (ads.length - fb) + " from Google and other ads"] : [],
+      k: "Ad leads (30 days)", kc: ads.length, kg: Math.max(1, m30.length),
+    };
+    return { agents: { mateo: mateo }, items: [] };
+  });
+
+  /* ---- Gia, Rina, Carlo, Leo and Rex work the small lists in lists.js ---- */
+  function zl(k) { var L = window.Z1Lists && window.Z1Lists[k]; return L ? L : null; }
+  function agoDays(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d || "") ? Math.round((new Date(ymd(new Date()) + "T00:00:00") - new Date(d + "T00:00:00")) / 864e5) : 0; }
+  list.push(function () {
+    var L = zl("enrollments"); if (!L) return {};
+    var open = L.open(), late = open.filter(function (r) { return r.st === "Sent, waiting" && agoDays(r.date) > 7; });
+    var gia = {
+      now: open.length ? "Working on " + plural(open.length, "enrollment") : "No enrollments open",
+      tasks: open.slice(0, 6).map(function (r) {
+        var what = (r.heads ? r.heads + " " : "") + (r.chg || "changes").toLowerCase() + " for " + r.acct;
+        return r.st === "To send" ? "Send " + what + " to " + r.ins : "Follow up " + r.ins + " on " + what;
+      }),
+      k: "Enrollments done", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { gia: gia }, items: late.length ? [{ who: "gia", title: plural(late.length, "enrollment") + " waiting over 7 days", tone: "info", badge: "Enrollment", sub: late.slice(0, 2).map(function (r) { return r.acct + " (" + r.ins + ")"; }).join(", "), path: "view:enrollments" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("loa"); if (!L) return {};
+    var open = L.open(), toSend = open.filter(function (r) { return r.st === "Open"; });
+    var rina = {
+      now: open.length ? "Working on " + plural(open.length, "LOA request") : "No LOA requests open",
+      tasks: open.slice(0, 6).map(function (r) { return (r.st === "Open" ? "Send the LOA request for " : "Chase " + r.ins + " on the LOA for ") + r.what + " (" + r.acct + ")"; }),
+      k: "LOAs closed", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { rina: rina }, items: toSend.length ? [{ who: "rina", title: plural(toSend.length, "LOA request") + " to send", tone: "need", badge: "LOA", sub: toSend.slice(0, 2).map(function (r) { return r.what + " (" + r.acct + ")"; }).join(", "), path: "view:loa" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("partners"); if (!L) return {};
+    var mo = ymd(new Date()).slice(0, 7), MN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][new Date().getMonth()];
+    var act = L.open(), due = act.filter(function (r) { return String(r.date || "").slice(0, 7) !== mo; });
+    var leads = act.reduce(function (n, r) { return n + (+r.leads || 0); }, 0);
+    var carlo = {
+      now: due.length ? "Sending " + MN + " statements to " + plural(due.length, "partner") : act.length ? "Every partner has their " + MN + " statement" : "No referral partners yet",
+      tasks: due.slice(0, 6).map(function (r) { return "Send the " + MN + " statement to " + r.name + (r.leads ? " (" + plural(+r.leads, "lead") + ")" : ""); }),
+      k: "Partner leads this month", kc: leads, kg: Math.max(1, leads),
+    };
+    return { agents: { carlo: carlo }, items: [] };
+  });
+  list.push(function () {
+    var L = zl("applicants"); if (!L) return {};
+    var open = L.open(), fresh = open.filter(function (r) { return r.st === "New"; });
+    var leo = {
+      now: open.length ? "Working with " + plural(open.length, "applicant") : "No applicants open",
+      tasks: open.slice(0, 6).map(function (r) { return (r.st === "New" ? "Screen " : r.st === "Screening" ? "Finish screening " : "Set up the interview with ") + r.name + " (" + (r.role || "applicant").toLowerCase() + ")"; }),
+      k: "Applicants hired", kc: L.rows().filter(function (r) { return r.st === "Hired"; }).length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { leo: leo }, items: fresh.length ? [{ who: "leo", title: plural(fresh.length, "new applicant"), tone: "info", badge: "Hiring", sub: fresh.slice(0, 2).map(function (r) { return r.name; }).join(", "), path: "view:applicants" }] : [] };
+  });
+  list.push(function () {
+    var L = zl("market"); if (!L) return {};
+    var open = L.open();
+    var rex = {
+      now: open.length ? "Looking into " + plural(open.length, "market note") : "No market notes open",
+      tasks: open.slice(0, 6).map(function (r) { return "Look into " + r.what + (r.src ? " (" + r.src + ")" : ""); }),
+      k: "Notes looked into", kc: L.rows().length - open.length, kg: Math.max(1, L.rows().length),
+    };
+    return { agents: { rex: rex }, items: [] };
+  });
+
+  /* ---- Kara, Chief of Staff: rolls up what needs Paolo or Karla across every live agent. Registered last. ---- */
+  var others = list.slice();
+  list.push(function () {
+    var need = [];
+    others.forEach(function (fn) { try { (fn().items || []).forEach(function (it) { if (it.tone === "need") need.push(it); }); } catch (err) { /* skip */ } });
+    var aps = (S.data.approvals || []).filter(function (a) { return a.state === "waiting"; }).length;
+    var tasks = need.map(function (it) { return it.title; });
+    if (aps) tasks.unshift("Remind you about " + plural(aps, "approval") + " waiting");
+    var kara = {
+      now: tasks.length ? "Chasing " + plural(tasks.length, "thing") + " that need you" : "Nothing needs you right now",
+      tasks: tasks.slice(0, 6),
+      k: "Items needing you", kc: tasks.length, kg: Math.max(1, tasks.length),
+    };
+    var slow = [];
+    others.forEach(function (fn) { try { (fn().items || []).forEach(function (it) { if (it.tone !== "need") slow.push(it); }); } catch (err) { /* skip */ } });
+    var celine = {
+      now: slow.length ? "Clearing " + plural(slow.length, "open step") + " across the team" : "No open steps across the team",
+      tasks: slow.slice(0, 6).map(function (it) { return it.title; }),
+      k: "Open steps", kc: slow.length, kg: Math.max(1, slow.length),
+    };
+    return { agents: { aria: kara, celine: celine }, items: [] };
   });
 })();
