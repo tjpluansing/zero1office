@@ -797,6 +797,8 @@
     return out;
   }
 
+  // Ask Kara reads the same team-wide picture (kara.js).
+  window.Z1Live = { build: function () { return me && can("billing.view") ? buildLive() : null; } };
   var LIVE_SRC = (document.getElementById("z1LiveSrc") || {}).textContent || "";
   function officeWin() { var fr = document.getElementById("officeFrame"); try { return fr && fr.contentWindow; } catch (err) { return null; } }
   // Agents fed by real tracker data show it on their own cards too: Active with the real "now" while
