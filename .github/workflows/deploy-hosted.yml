@@ -1,7 +1,7 @@
 # Uploads hosted/site to app.ask-karla.com (Hostinger) by FTP.
 # Runs when hosted/site changes on Primary, or from Actions > "Deploy app.ask-karla.com" > Run workflow.
-# Needs three repository secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
-# (a Hostinger FTP account whose folder is public_html/app).
+# Needs one repository secret, FTP_PASSWORD, for the Hostinger FTP account u779592699.z1app
+# (its folder is public_html; the app lives in public_html/app).
 name: Deploy app.ask-karla.com
 on:
   push:
@@ -17,8 +17,8 @@ jobs:
       - name: Upload changed files
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: ftp.ask-karla.com
+          username: u779592699.z1app
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./hosted/site/
-          server-dir: ./
+          server-dir: ./app/
