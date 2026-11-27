@@ -649,6 +649,40 @@
     [/function vSocials\(\)\{return ndEmpty\(/, "function vSocialsNd(){return ndEmpty("],
     [/function vScraped\(\)\{return ndEmpty\(/, "function vScrapedNd(){return ndEmpty("],
   ];
+  /* LIVE shows real data only (Paolo, 2026-11-27: "This is a sample data. Why is it still in the live dashboard?").
+     The 3D office page carries its own sample approvals, inbox, task lines and scores, and the app has a few sample
+     sentences. In LIVE they are swapped out before the scripts run; the demo keeps them. */
+  var LIVE_PATCHES = [
+    [/ Nico found 212 new SMEs, Maya finished the Northpoint proposal, Gia submitted 6 new hires, and Rina solved 4 member requests\./, ""],
+    [/<p><b>At risk:<\/b> Seaside Family Clinic[^<]*<\/p><p><b>Tomorrow:<\/b> Northpoint walkthrough[^<]*<\/p>/, ""],
+    [/so those numbers below stay samples until they come in through Billing &amp; SOA\./, "so those numbers below stay at zero until they come in through Billing &amp; SOA."],
+  ];
+  var OFFICE_LIVE_PATCHES = [
+    // sample approvals ("Northpoint Logistics: 3-tier HMO proposal" and three more): real ones come from the app
+    [/"ap": \[\{[^\]]*\]/, '"ap": []'],
+    // sample "now" lines and KPI counts on every agent: the app sends the real ones
+    [/"now": "[^"]*"/g, '"now": "Ready for work"'],
+    [/"kc": \d+/g, '"kc": 0'],
+    [/done:Math\.floor\(rnd\(3,11\)\),kc:e\.kc,/, "done:0,kc:0,"],
+    // the inbox tray held three sample items and pretend finished work; LIVE starts it empty
+    [/if\(!S\.inbox\.length\)S\.inbox=\[[^\]]*\];/, "S.inbox=[];S.apDone={};"],
+    // agents keep walking and working, but don't pretend to finish work, score it or drop it in the tray
+    [/const title=a\.task\.t;a\.done\+\+;a\.kc\+\+;log\(a,"Finished: "\+title\);/, "a.task.p=0;setPlan(a,seatSteps(a).concat([{t:\"work\",dur:rnd(10,18)}]));return;"],
+    // small talk that named sample clients
+    [/"Who's on the Northpoint file\?"/, '"Anything you need from me?"'],
+    [/\["Quick question on the Northpoint file\?","Sure, sending it now\."\]/, '["Quick question on this one?","Sure, go ahead."]'],
+    [/\["The client said yes!","Nice work!"\]/, '["Coffee later?","Sure!"]'],
+    [/\["Which plan fits a 25-person clinic\?","Plus, by a mile\."\]/, '["Got a minute?","Give me five."]'],
+    [/e\.g\. Get Owen started on the Seaside renewal/, "e.g. Ask Owen which renewals are due this month"],
+  ];
+  function officeLive() {
+    var el = document.getElementById("officeSrc"); if (!el) return;
+    var txt = el.textContent;
+    OFFICE_LIVE_PATCHES.forEach(function (p) { txt = txt.replace(p[0], p[1]); });
+    el.textContent = txt;
+  }
+  H.LIVE_PATCHES = LIVE_PATCHES; H.OFFICE_LIVE_PATCHES = OFFICE_LIVE_PATCHES;
+
   function startDemo() {
     stepDone();
     H.demo = true; H.email = DEMO_EMAIL; H.provider = "demo";
@@ -709,7 +743,7 @@
         stepDone();
         nativeSet.call(localStorage, "zero1office-auth:v1", JSON.stringify({ email: email }));
         H.ready = true; (H.waiting || []).forEach(function (f) { f(); }); H.waiting = [];
-        listen(); hideScreen(); runApp(); modeSwitch(); settingsCard();
+        listen(); hideScreen(); officeLive(); runApp(LIVE_PATCHES); modeSwitch(); settingsCard();
         fetchDoc("meta/demo").then(function (row) {
           if (!row) return;
           H.demoCfg = normCfg(row.data); cacheCfg(H.demoCfg); var w = $("z1mode"); if (w) w.remove(); modeSwitch();
