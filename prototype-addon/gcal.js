@@ -25,7 +25,8 @@
     ".z1c-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line)}" +
     ".z1c-row:first-child{border-top:0}" +
     ".z1c-ad{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;cursor:pointer}" +
-    ".z1c-ad input{width:16px;height:16px;margin:0}#ev-time:disabled{opacity:.45}";
+    ".z1c-ad input{width:16px;height:16px;margin:0}#ev-time:disabled{opacity:.45}" +
+    ".ev-other{background:var(--sunken);border-color:#6B7280;color:var(--ink)}";
   document.head.appendChild(css);
 
   function pad(n) { return String(n).padStart(2, "0"); }
@@ -195,22 +196,22 @@
       mid = mid.replace(/<\/span>$/, ' <span class="muted small">· ' + esc(e.srcN) + '</span></span>');
       return '<div class="ag" style="border-left-color:' + col + '">' + mid + (e.link ? '<a class="btn sm" href="' + esc(e.link) + '" target="_blank" rel="noopener">Open in ' + app + '</a>' : '<span class="muted small">' + app + '</span>') + '</div>';
     });
-    // The checkbox bar replaces nothing: it sits above the month grid.
+    // "Other" office events (Paolo, 2026-11-27: "add others in calendar for the type of calendar booking"): grey, with a legend chip.
+    h = h.split("border-left-color:undefined").join("border-left-color:#6B7280");
+    h = h.replace('<span class="ev ev-red">Deadline</span>', '<span class="ev ev-red">Deadline</span><span class="ev ev-other">Other</span>');
+    // A status bar sits above the month grid. Which calendars show is chosen in Accesses > Calendars
+    // (Paolo, 2026-11-27: one place for the ticks, not two).
     var anyExt = src.length > 1 || rowOn("la_gcal");
-    var bar = '<div class="z1g-bar" role="group" aria-label="Calendars to show"><div class="z1c-cks"><b>Show</b>' + src.map(function (s) {
-      var sw = s.kind === "office" ? "linear-gradient(135deg,#1E5190 50%,#D3A13B 50%)" : PAL[s.ci], key = s.id + "|" + k;
-      var st = C.busy[key] ? ' <span class="muted">loading…</span>' : C.err[s.id] && shown(s) ? ' <span style="color:var(--bad)">not loaded</span>' : "";
-      return '<label class="z1c-ck"><input type="checkbox" data-zc="show" data-id="' + esc(s.id) + '"' + (shown(s) ? " checked" : "") + '><i class="z1c-sw" style="background:' + sw + '"></i>' + esc(s.n) + st + '</label>';
-    }).join("") + '</div>';
+    var bar = '<div class="z1g-bar" role="status">';
     var errs = src.filter(function (s) { return C.err[s.id] && shown(s); });
     if (C.glErr) bar += '<div style="color:var(--bad)">' + esc(C.glErr) + '</div>';
     errs.forEach(function (s) { bar += '<div><b>' + esc(s.n) + ':</b> <span style="color:var(--bad)">' + esc(C.err[s.id]) + '</span></div>'; });
     var acts = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
     if (!claudeOk()) acts += '<span class="muted">Google and Outlook calendars show when Zero1Office is opened in Claude.</span>';
-    else if (!C.on && anyExt) acts += '<span class="muted">See your Google and Outlook events here too. Nothing is changed in them.</span><button class="btn sm pri" data-zc="load">Show my connected calendars</button>';
+    else if (!C.on && anyExt) acts += '<span class="muted">See your Google and Outlook events here too. Nothing is changed in them.</span><button class="btn sm pri" data-zcal="load">Show my connected calendars</button>';
     else { var busy = Object.keys(C.busy).length || C.glBusy, n = ext.length, last = Math.max.apply(null, [0].concat(Object.keys(C.at).map(function (x) { return C.at[x]; })));
-      acts += '<span class="muted">' + (busy ? "Loading calendars…" : n + " outside event" + (n === 1 ? "" : "s") + " on screen · read-only" + (last ? " · updated " + esc(when(last)) : "")) + '</span><button class="btn sm" data-zc="load"' + (busy ? " disabled" : "") + '>Refresh</button>'; }
-    acts += '<button class="btn sm" data-go="accesses">Add or manage calendars</button></div>';
+      acts += '<span class="muted">' + (busy ? "Loading calendars…" : n + " outside event" + (n === 1 ? "" : "s") + " on screen · read-only" + (last ? " · updated " + esc(when(last)) : "")) + '</span><button class="btn sm" data-zcal="load"' + (busy ? " disabled" : "") + '>Refresh</button>'; }
+    acts += '<button class="btn sm" data-go="accesses">Choose calendars</button></div>';
     bar += acts + '</div>';
     var at = h.indexOf('<div class="cal">');
     return at < 0 ? h + bar : h.slice(0, at) + bar + h.slice(at);
@@ -223,20 +224,20 @@
     var src = sources(), gl = gList(), g = rowOn("la_gcal"), o = rowOn("la_cal");
     var rows = src.map(function (s) {
       var tag = s.kind === "office" ? "Zero1Office" : s.kind === "google" ? "Google" : "Outlook", sw = s.kind === "office" ? "linear-gradient(135deg,#1E5190 50%,#D3A13B 50%)" : PAL[s.ci];
-      var del = s.id.indexOf("on:") === 0 ? '<button class="btn sm" data-zc="delname" data-v="' + esc(s.name) + '">Remove</button>' : s.owner ? '<span class="muted small">Remove it under Calendar (Outlook) below</span>' : "";
+      var del = s.id.indexOf("on:") === 0 ? '<button class="btn sm" data-zcal="delname" data-v="' + esc(s.name) + '">Remove</button>' : s.owner ? '<span class="muted small">Remove it under Calendar (Outlook) below</span>' : "";
       return '<div class="z1c-row"><i class="z1c-sw" style="background:' + sw + '"></i><b style="flex:1;min-width:150px;word-break:break-word">' + esc(s.n.replace(/ \((Google|Outlook)(, main)?\)$/, "")) + (s.primary ? ' <span class="s s-info">Main</span>' : '') + '</b><span class="tag">' + tag + '</span>' +
-        '<label class="z1c-ck small"><input type="checkbox" data-zc="show" data-id="' + esc(s.id) + '"' + (shown(s) ? " checked" : "") + '>Show on Calendar</label>' + del + '</div>';
+        '<label class="z1c-ck small"><input type="checkbox" data-zcal="show" data-id="' + esc(s.id) + '"' + (shown(s) ? " checked" : "") + '>Show on Calendar</label>' + del + '</div>';
     }).join("");
     var gnote = !g ? '<div class="muted small">Calendar (Google) is switched off below, so Google calendars are hidden.</div>' :
-      !gl ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span class="muted small">' + (C.glErr ? esc(C.glErr) : "Your Google calendars aren't loaded yet.") + '</span><button class="btn sm" data-zc="glist"' + (C.glBusy || !claudeOk() ? " disabled" : "") + '>' + (C.glBusy ? "Loading…" : "Load my Google calendars") + '</button></div>' : "";
+      !gl ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span class="muted small">' + (C.glErr ? esc(C.glErr) : "Your Google calendars aren't loaded yet.") + '</span><button class="btn sm" data-zcal="glist"' + (C.glBusy || !claudeOk() ? " disabled" : "") + '>' + (C.glBusy ? "Loading…" : "Load my Google calendars") + '</button></div>' : "";
     var add = o ? '<div class="lbl" style="margin:12px 0 4px">Add a calendar</div>' +
       '<div class="small" style="margin-bottom:4px"><b>Someone else\'s Outlook calendar</b> <span class="muted">(they share it with your Microsoft 365 account first)</span></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-oe" type="email" placeholder="e.g. assistant@ask-karla.com" style="flex:2;min-width:180px" aria-label="Their email"><input class="inp" id="z1c-ol" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:110px" aria-label="Label"><button class="btn sm pri" data-zc="addowner">Add</button></div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-oe" type="email" placeholder="e.g. assistant@ask-karla.com" style="flex:2;min-width:180px" aria-label="Their email"><input class="inp" id="z1c-ol" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:110px" aria-label="Label"><button class="btn sm pri" data-zcal="addowner">Add</button></div>' +
       '<div class="small" style="margin:10px 0 4px"><b>Another calendar in your own Outlook</b> <span class="muted">(for example Birthdays or a team calendar, by its name in Outlook)</span></div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-on" placeholder="Calendar name, e.g. Birthdays" maxlength="80" style="flex:2;min-width:180px" aria-label="Calendar name"><button class="btn sm pri" data-zc="addname">Add</button></div>' :
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><input class="inp" id="z1c-on" placeholder="Calendar name, e.g. Birthdays" maxlength="80" style="flex:2;min-width:180px" aria-label="Calendar name"><button class="btn sm pri" data-zcal="addname">Add</button></div>' :
       '<div class="muted small" style="margin-top:8px">Calendar (Outlook) is switched off below, so Outlook calendars are hidden.</div>';
     return '<div class="card pad" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap"><h3 style="margin:0">Calendars · ' + src.length + '</h3><button class="btn sm" data-go="calendar">Open Calendar</button></div>' +
-      '<div class="muted small" style="margin:2px 0 6px">Every calendar Zero1Office can read. Tick the ones to show on the Calendar page. Read-only: nothing is changed in Google or Outlook.</div>' +
+      '<div class="muted small" style="margin:2px 0 6px">Every calendar Zero1Office can read. Tick the ones to show on the Calendar page (this is the only place to choose them). Read-only: nothing is changed in Google or Outlook.</div>' +
       rows + gnote + add +
       '<div class="muted" style="font-size:11px;margin-top:10px"><b>Google:</b> calendars shared with your Google account, and ones you subscribe to in Google Calendar, show up here after you press Load again. <b>Apple iCloud, Yahoo, Zoho and other apps:</b> copy the calendar\'s link from that app, then add it in Google Calendar (Other calendars, From URL) or Outlook (Add calendar, Subscribe from web). It then shows up here.</div></div>';
   }
@@ -247,16 +248,16 @@
 
   function val(id) { var el = document.getElementById(id); return el ? String(el.value || "").trim() : ""; }
   document.addEventListener("change", function (ev) {
-    var t = ev.target; if (!t || t.getAttribute("data-zc") !== "show") return;
+    var t = ev.target; if (!t || t.getAttribute("data-zcal") !== "show") return;
     var id = t.getAttribute("data-id"); C.show[id] = !!t.checked; saveShow();
     var s = sources().filter(function (x) { return x.id === id; })[0];
     if (s && s.kind !== "office" && t.checked && claudeOk() && (C.on || S.view === "calendar")) { C.on = true; try { localStorage.setItem(ONKEY, "1"); } catch (err) { /* optional */ } delete C.err[id]; want(s, false); }
     render();
   }, true);
   document.addEventListener("click", function (ev) {
-    var b = ev.target && ev.target.closest && ev.target.closest("[data-zc]"); if (!b || b.tagName === "INPUT") return;
+    var b = ev.target && ev.target.closest && ev.target.closest("[data-zcal]"); if (!b || b.tagName === "INPUT") return;
     ev.preventDefault(); ev.stopPropagation();
-    var a = b.getAttribute("data-zc"), c = cfg();
+    var a = b.getAttribute("data-zcal"), c = cfg();
     if (a === "load") { loadAll(true); return; }
     if (a === "glist") { C.glErr = ""; loadGList(); return; }
     if (a === "addowner") {
@@ -284,7 +285,7 @@
   document.addEventListener("keydown", function (ev) {
     if (ev.key !== "Enter" || !ev.target) return;
     var m = { "z1c-oe": "addowner", "z1c-ol": "addowner", "z1c-on": "addname" }[ev.target.id];
-    if (m) { ev.preventDefault(); var b = document.querySelector('[data-zc="' + m + '"]'); if (b) b.click(); }
+    if (m) { ev.preventDefault(); var b = document.querySelector('[data-zcal="' + m + '"]'); if (b) b.click(); }
   }, true);
 
   // ---------- All-day events in the Add / Edit event form ----------
@@ -296,6 +297,8 @@
     adIn = document.getElementById("ev-allday");
     adIn.addEventListener("change", function () { tmIn.disabled = adIn.checked; });
   }
+  var kindSel = document.getElementById("ev-kind");
+  if (kindSel && !kindSel.querySelector('option[value="other"]')) { var op = document.createElement("option"); op.value = "other"; op.textContent = "Other"; kindSel.appendChild(op); }
   function setAd(on) { if (!adIn) return; adIn.checked = !!on; tmIn.disabled = !!on; }
   window.addEventListener("click", function (ev) {
     var t = ev.target && ev.target.closest && ev.target.closest("[data-act],[data-ex]"); if (!t) return;
