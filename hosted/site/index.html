@@ -9464,7 +9464,8 @@ body.z1-locked .wrap{visibility:hidden}
   var F = { src: "maps", q: "", city: "", busy: false, err: "", res: [], pick: {}, cursor: null, more: false, adding: false, msg: "", checking: {} };
 
   function payload(r) {
-    var p = r && r.payload; if (p && typeof p === "object") return p;
+    var p = r && r.payload; if (typeof p === "string") { try { p = JSON.parse(p); } catch (err) { return { __raw: p }; } }
+    if (p && typeof p === "object") return p;
     try { var t = (r.content || []).filter(function (b) { return b.type === "text"; })[0]; return JSON.parse(t.text); } catch (err) { return {}; }
   }
   function site(u) { return u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""); }
@@ -9543,9 +9544,12 @@ body.z1-locked .wrap{visibility:hidden}
     var opts = { query: F.q + " " + F.city, country: "ph", include_opening_hours: false };
     if (next && F.cursor) opts.cursor = F.cursor;
     return callFirecrawl("alexandria_library_read", { objective: "Find Philippine businesses to offer group HMO plans to", calls: [{ provider: "firecrawl-maps", capability: "businesses/search", options: opts }] }).then(function (p) {
-      var a = ((p.data || p).alexandria || [])[0] || {};
+      if (p.success === false || (p.error && !p.data)) throw { message: (p.error && (p.error.message || p.error)) || "The search failed." };
+      var al = (p.data || p).alexandria, a = (Array.isArray(al) ? al[0] : al) || {};
       if (a.error) throw { message: a.error.message || a.error.code || "The search failed." };
-      var d = a.data || {}, seen = {}, have = haveIds();
+      var d = a.data || a, seen = {}, have = haveIds();
+      if (!d.results && Array.isArray(d.records)) d.results = d.records;
+      if (!d.results && !al) F.odd = shape(p);
       F.res.forEach(function (b) { seen[b.id] = 1; });
       (d.results || []).forEach(function (x) {
         if (!x || !x.feature_id || x.business_status === "permanently_closed") return;
@@ -9560,7 +9564,10 @@ body.z1-locked .wrap{visibility:hidden}
     var query = F.src === "fb" ? q + " site:facebook.com" : F.src === "li" ? q + " Philippines site:linkedin.com/company" : q + " Philippines contact us -site:facebook.com -site:linkedin.com -site:jobstreet.com.ph -site:indeed.com";
     return callFirecrawl("firecrawl_search", { query: query, limit: 20, sources: ["web"], location: "Philippines", domainTools: false, objective: "Find Philippine businesses to offer group HMO plans to" }).then(function (p) {
       if (p.success === false) throw { message: p.error || "The search failed." };
-      var rows = ((p.data && p.data.web) || p.web || []), seen = {}, have = haveIds();
+      var rows = (p.data && p.data.web) || p.web || (Array.isArray(p.data) ? p.data : null), seen = {}, have = haveIds();
+      if (!rows) { F.odd = shape(p); rows = []; }
+      else if (!rows.length && (p.warning || p.data && p.data.warning)) F.odd = "Firecrawl says: " + String(p.warning || p.data.warning).slice(0, 160);
+      else if (!rows.length) F.odd = "0 results came back (" + shape(p) + ")";
       F.res.forEach(function (b) { seen[b.id] = 1; });
       rows.forEach(function (x) {
         var url = canon(x && x.url, F.src); if (!url) return;
@@ -9573,12 +9580,17 @@ body.z1-locked .wrap{visibility:hidden}
       F.cursor = null; F.more = false;
     });
   }
+  // a short picture of an answer that wasn't in the expected shape, so a screenshot says what came back
+  function shape(p) {
+    try { var t = JSON.stringify(p); return t.length > 160 ? t.slice(0, 160) + "…" : t; } catch (e) { return String(p).slice(0, 160); }
+  }
   function search(next) {
     if (F.busy) return;
     if (!F.q || !F.city) { F.err = "Type a business type and a city."; render(); return; }
     F.busy = true; F.err = ""; F.msg = ""; if (!next) { F.res = []; F.pick = {}; F.cursor = null; F.more = false; } render();
+    F.odd = "";
     (F.src === "maps" ? searchMaps(next) : searchWeb()).then(function () {
-      if (!F.res.length) F.err = "Nothing found. Try another business type or city.";
+      if (!F.res.length) F.err = F.odd ? "Nothing found. Details for Claude: " + F.odd : "Nothing found. Try another business type or city.";
     }).catch(function (e) { F.err = errText(e); }).then(function () { F.busy = false; render(); });
   }
 
