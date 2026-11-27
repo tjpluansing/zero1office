@@ -73,4 +73,5 @@ office's data in Supabase, and it never shows what that browser saved while some
 
 - `tests/docs_test.sql`: database rules, run on Postgres after `supabase.sql`.
 - `tests/e2e.cjs` with `tests/fake-supabase.js`: sign-in, users, staff pages, company profile, live sync, sign out.
+- `tests/demo_settings_e2e.cjs` (same setup, also run with `NOFN=1`): demo page ticks save, survive a reload and shape the demo.
 - `tests/demo_e2e.cjs` (same setup): demo with sample data and no database calls, real data untouched, LIVE to sign in, Settings > Demo mode.
