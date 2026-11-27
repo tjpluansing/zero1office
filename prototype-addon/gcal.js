@@ -1,7 +1,7 @@
 /* zero1office add-on: calendars on the Calendar page, all-day events and "Other" events, and a simple Accesses page.
    Paolo, 2026-11-27: the Calendar page shows the office's own events plus ONE connected calendar ("Just 1 connected
    calendar will do"): the main Google calendar when Calendar (Google) is on in Accesses, otherwise your own Outlook
-   calendar. Accesses shows only each connection's name, status, Check and on/off switch, with no personal data.
+   calendar. In DEMO mode, Accesses shows only each connection's name, status, Check and on/off switch; LIVE keeps the full page.
    Read-only: nothing is written to Google or Outlook, and their events are kept in memory for this visit only.
    The first load waits for a click, because it asks you to allow the connector. */
 (function () {
@@ -198,7 +198,12 @@
 
   // ---------- Accesses: one line per connection (Paolo, 2026-11-27: "just show Heading of the setting, status, check and
   // toggle switch. Remove personal data.") No descriptions, sign-in addresses, previews, mailbox, calendar or file lists. ----------
-  if (VIEWS.accesses && typeof liveRows === "function" && typeof liveBadge === "function") VIEWS.accesses = function () {
+  // Paolo, 2026-11-27 6:42 PM: "Revert to previous in LIVE Mode. Use this in DEMO Mode only." The short list shows only in
+  // the app.ask-karla.com demo (Z1Host.demo); signed-in LIVE use and claude.ai keep the full Accesses page.
+  var fullAcc = VIEWS.accesses;
+  function isDemo() { return !!(window.Z1Host && window.Z1Host.demo); }
+  if (fullAcc && typeof liveRows === "function" && typeof liveBadge === "function") VIEWS.accesses = function () {
+    if (!isDemo()) return fullAcc();
     var a = liveRows(), on = a.filter(function (x) { return x.on; }), ok = on.filter(function (x) { return x.st && (x.st.ok || x.st.warn); }).length, busy = window.LIVE_BUSY || {};
     return '<div class="ph"><div><h2>Accesses</h2><p>Your connections. Check runs a live, read-only test.</p></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm pri" data-act="lacheckall">Check all</button><button class="btn sm" data-go="office">Back to the office</button></div></div>' +
       '<div class="card pad" style="background:var(--gold-soft);border-color:transparent;margin-bottom:12px"><b>' + ok + ' of ' + on.length + ' switched-on tools connected</b></div>' +
