@@ -7,7 +7,8 @@
    - claude.use("assets") -> private storage bucket "files", served at /_blob/<id> by sw.js
    - each page's saved records (browser storage keys starting zero1office / z1) are shared through app_docs
      ls/<key>/..., so everyone sees the same SOAs, renewals, lists and HR records
-   - mcp, sample (AI) and dictation are not here yet (phases 2 and 3): use() resolves null and the app says so.
+   - claude.use("sample") -> the z1-ai server function: Claude, ChatGPT or Gemini, picked in Settings > AI brain
+   - mcp and dictation are not here yet (phase 3): use() resolves null and the app says so.
    The app's own <script> tags are turned off by build.sh (type="text/z1-app") and run here once ready.
    DEMO | LIVE: visitors who aren't signed in land on a demo with sample records held in the tab's memory (no database
    calls, no reading of real browser storage). LIVE opens sign-in. Super Admins pick the demo's pages, or turn it off,
@@ -239,9 +240,62 @@
   });
   var PERMS = Object.freeze({ state: function () { return Promise.resolve("denied"); }, request: function () { return Promise.resolve({}); }, manage: function () { return Promise.reject({ code: "unavailable" }); } });
 
+  /* ---------- AI brain: claude.use("sample") through the z1-ai server function (Paolo, 2026-11-27: "I also want the
+     option connect different AI's such as Chatgpt etc."). The office picks Claude, ChatGPT or Gemini in Settings >
+     AI brain; keys stay in Supabase secrets. No AI in the demo, and none until a key is added. ---------- */
+  var aiStat = null;
+  function aiInvoke(body) {
+    return H.sb.functions.invoke("z1-ai", { body: body }).then(function (r) {
+      if (r.error) return (r.error.context && r.error.context.json ? r.error.context.json() : Promise.resolve({})).then(function (b) { throw { code: (b && b.code) || (r.error.context && r.error.context.status === 429 ? "rate_limited" : "upstream_error"), message: (b && b.error) || "The AI didn't answer." }; }, function () { throw { code: "upstream_error", message: "The AI didn't answer." }; });
+      return r.data;
+    });
+  }
+  function parseJson(t) {
+    t = String(t || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+    try { return JSON.parse(t); } catch (e) { /* look for the first object or array */ }
+    var a = t.search(/[{[]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+    if (a > -1 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) { /* fall through */ } }
+    throw { code: "upstream_error", message: "The AI's answer wasn't in the expected format." };
+  }
+  H.ai = {
+    status: function (fresh) {
+      if (H.demo || !H.sb) return Promise.resolve(null);
+      if (!aiStat || fresh) aiStat = aiInvoke({ op: "status" }).catch(function (e) { aiStat = null; throw e; });
+      return aiStat;
+    },
+    ask: function (input, o) {
+      o = o || {};
+      var body = { op: "ask", input: input, tier: o.modelTier || "default" };
+      if (o.provider) body.provider = o.provider;
+      if (o.model) body.model = o.model;
+      return aiInvoke(body);
+    },
+  };
+  function sampleFn() {
+    var f = function (input, opts) {
+      return H.ai.ask(input, opts).then(function (d) {
+        var t = String(d && d.text || "");
+        if (opts && typeof opts.onText === "function") { try { opts.onText({ text: t, delta: t }); } catch (e) { /* page callback */ } }
+        return { text: t, truncated: false, modelApplied: d && d.model };
+      });
+    };
+    f.json = function (input, opts) { return f(input, opts).then(function (r) { return parseJson(r.text); }); };
+    f.limits = function () { return Promise.resolve({ images: false }); };
+    return Object.freeze(f);
+  }
+  var SAMPLE = null;
+
   window.claude = Object.freeze({
     use: function (name) {
       return new Promise(function (res) {
+        if (name === "sample") {
+          var goAi = function () {
+            if (H.demo) return res(null);
+            H.ai.status().then(function (st) { res(st && st.provider ? (SAMPLE = SAMPLE || sampleFn()) : null); }, function () { res(null); });
+          };
+          if (H.ready) setTimeout(goAi, 0); else (H.waiting = H.waiting || []).push(goAi);
+          return;
+        }
         var go = function () { res(name === "db" ? DB : name === "assets" ? (H.demo ? DEMO_ASSETS : ASSETS) : name === "downloads" ? DOWNLOADS : name === "permissions" ? PERMS : null); };
         if (H.ready) setTimeout(go, 0); else (H.waiting = H.waiting || []).push(go);
       });

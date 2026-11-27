@@ -13,7 +13,7 @@
   if (typeof VIEWS !== "object" || !VIEWS || typeof NAV === "undefined" || !window.Z1Auth || window.Z1Users) return;
 
   var ITER = 150000, SA = "Super Admin", STAFF = "Staff";
-  var ALWAYS = ["profile"], ADMIN_ONLY = ["users", "company"];
+  var ALWAYS = ["profile"], ADMIN_ONLY = ["users", "company", "aibrain"];
   var HOST = window.Z1Host || null; // set on app.ask-karla.com (hosted/shim.js): Supabase keeps the passwords
   function viaMicrosoft() { return !!(HOST && HOST.provider === "azure"); }
   var U = { db: null, assets: null, list: [], loaded: false, company: {}, err: "", fails: 0, waitUntil: 0, edit: null, temp: null, busy: false, ptab: "me" };
