@@ -373,10 +373,15 @@
     var timeout = new Promise(function (res) { setTimeout(function () { res({ error: { message: "timed out" } }); }, 5000); });
     var call = H.sb.rpc ? Promise.resolve(H.sb.rpc("z1_demo")) : Promise.resolve({ error: { message: "no rpc" } });
     return Promise.race([call, timeout]).then(function (r) {
-      if (!r || r.error) { H.demoCfgFrom = "error"; diag("demo settings: " + ((r && r.error && r.error.message) || "?")); return; }
+      if (!r || r.error) { H.demoCfgFrom = "error"; useCachedCfg(); diag("demo settings: " + ((r && r.error && r.error.message) || "?")); return; }
       H.demoCfg = normCfg(r.data); H.demoCfgFrom = r.data ? "server" : "default";
-    }, function (e) { H.demoCfgFrom = "error"; diag("demo settings: " + ((e && e.message) || e)); });
+    }, function (e) { H.demoCfgFrom = "error"; useCachedCfg(); diag("demo settings: " + ((e && e.message) || e)); });
   }
+  /* until supabase-demo.sql is run, people who aren't signed in can't read the settings; this browser keeps the last
+     settings it saw while signed in so a Super Admin checking the demo here, signed out, sees their choices */
+  var CFG_KEY = "ak-demo-cfg";
+  function cacheCfg(c) { try { nativeSet.call(localStorage, CFG_KEY, JSON.stringify({ on: c.on, pages: c.pages })); } catch (e) { /* optional */ } }
+  function useCachedCfg() { try { var c = JSON.parse(nativeGet.call(localStorage, CFG_KEY) || "null"); if (c) H.demoCfg = normCfg(c); } catch (e) { /* optional */ } }
   function demoCatalog() {
     var out = [];
     (window.NAV || []).forEach(function (g) { (g[1] || []).forEach(function (it) { if (HIDDEN_IN_DEMO.indexOf(it[0]) < 0) out.push({ group: g[0], key: it[0], label: it[1] }); }); });
@@ -541,6 +546,7 @@
   function saveDemoCfg(next, msg) {
     var prev = H.demoCfg; H.demoCfg = next; try { window.render(); } catch (e) { /* redraw */ }
     DB.doc("meta/demo").set({ on: next.on, pages: next.pages, updated: new Date().toISOString(), by: H.email }).then(function () {
+      cacheCfg(next);
       try { window.toast(msg); } catch (e) { /* toast optional */ }
       var w = $("z1mode"); if (w) w.remove(); modeSwitch();
     }, function (e) { H.demoCfg = prev; try { window.render(); window.toast("Couldn't save: " + ((e && e.message) || "try again")); } catch (x) { /* redraw */ } });
@@ -652,7 +658,7 @@
         listen(); hideScreen(); runApp(); modeSwitch(); settingsCard();
         fetchDoc("meta/demo").then(function (row) {
           if (!row) return;
-          H.demoCfg = normCfg(row.data); var w = $("z1mode"); if (w) w.remove(); modeSwitch();
+          H.demoCfg = normCfg(row.data); cacheCfg(H.demoCfg); var w = $("z1mode"); if (w) w.remove(); modeSwitch();
           try { if (window.S && S.view === "settings") window.render(); } catch (e) { /* redraw */ }
         }, function () { /* keep what boot read */ });
         H.mainKey = (function () { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^zero1office-mock:/.test(k)) return k; } return "zero1office-mock:v3"; })();
@@ -707,7 +713,7 @@
     var mode = getMode();
     Promise.all([H.sb.auth.getSession().catch(function (e) { return { data: { session: null }, error: e }; }), loadDemoCfg()]).then(function (x) {
       // signed in but the public read (supabase-demo.sql) isn't set up: read the settings as a member instead
-      if (H.demoCfgFrom === "error" && x[0].data.session) return fetchDoc("meta/demo").then(function (row) { if (row) H.demoCfg = normCfg(row.data); }, function () { /* keep defaults */ }).then(function () { return x; });
+      if (H.demoCfgFrom === "error" && x[0].data.session) return fetchDoc("meta/demo").then(function (row) { if (row) { H.demoCfg = normCfg(row.data); cacheCfg(H.demoCfg); } }, function () { /* keep defaults */ }).then(function () { return x; });
       return x;
     }).then(function (x) {
       var r = x[0], err = /error_description=([^&]+)/.exec(location.hash + "&" + location.search);
