@@ -9712,7 +9712,7 @@ body.z1-locked .wrap{visibility:hidden}
   function tabs() {
     var T = [["home", "Overview"], ["ready", "1. Get ready"], ["hire", "2. Hire"], ["onboard", "3. Onboard"], ["pay", "4. Pay"], ["keep", "5. Day to day"], ["rules", "Rules & holidays"]];
     return '<div class="chips" role="tablist" style="margin-bottom:14px;flex-wrap:wrap">' + T.map(function (t) {
-      return '<button class="chip' + (tab === t[0] ? " on" : "") + '" role="tab" aria-selected="' + (tab === t[0]) + '" data-hrtab="' + t[0] + '">' + t[1] + "</button>";
+      return '<button class="chip' + (tab === t[0] ? " on" : "") + '" role="tab" aria-selected="' + (tab === t[0]) + '" aria-pressed="' + (tab === t[0]) + '" data-hrtab="' + t[0] + '">' + t[1] + "</button>";
     }).join("") + "</div>";
   }
   function bar(done, all) {
