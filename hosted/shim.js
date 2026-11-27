@@ -635,7 +635,11 @@
         nativeSet.call(localStorage, "zero1office-auth:v1", JSON.stringify({ email: email }));
         H.ready = true; (H.waiting || []).forEach(function (f) { f(); }); H.waiting = [];
         listen(); hideScreen(); runApp(); modeSwitch(); settingsCard();
-        fetchDoc("meta/demo").then(function (row) { if (row) { H.demoCfg = normCfg(row.data); var w = $("z1mode"); if (w) w.remove(); modeSwitch(); } }, function () { /* keep what boot read */ });
+        fetchDoc("meta/demo").then(function (row) {
+          if (!row) return;
+          H.demoCfg = normCfg(row.data); var w = $("z1mode"); if (w) w.remove(); modeSwitch();
+          try { if (window.S && S.view === "settings") window.render(); } catch (e) { /* redraw */ }
+        }, function () { /* keep what boot read */ });
         H.mainKey = (function () { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^zero1office-mock:/.test(k)) return k; } return "zero1office-mock:v3"; })();
       });
     }).catch(function (e) { started = false; stepDone(); screen('<div><h2>Couldn\'t open Zero1Office</h2><p>' + escH((e && e.message) || "Check your connection and try again.") + '</p></div><button class="pri" type="button" onclick="location.reload()">Try again</button>'); });
@@ -687,6 +691,10 @@
     step("Checking your sign-in");
     var mode = getMode();
     Promise.all([H.sb.auth.getSession().catch(function (e) { return { data: { session: null }, error: e }; }), loadDemoCfg()]).then(function (x) {
+      // signed in but the public read (supabase-demo.sql) isn't set up: read the settings as a member instead
+      if (H.demoCfgFrom === "error" && x[0].data.session) return fetchDoc("meta/demo").then(function (row) { if (row) H.demoCfg = normCfg(row.data); }, function () { /* keep defaults */ }).then(function () { return x; });
+      return x;
+    }).then(function (x) {
       var r = x[0], err = /error_description=([^&]+)/.exec(location.hash + "&" + location.search);
       if (started) { stepDone(); return; }
       // DEMO for visitors (and anyone who picked it); LIVE for people already signed in or who clicked LIVE
