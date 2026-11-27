@@ -47,6 +47,7 @@
   function hideScreen() { var w = $("z1h"); if (w) w.hidden = true; }
   var MS = '<svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true"><rect width="10" height="10" fill="#F25022"/><rect x="11" width="10" height="10" fill="#7FBA00"/><rect y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg>';
   function loginScreen(msg) {
+    stepDone();
     screen('<div><h2>Sign in</h2><p>Use your @ask-karla.com account.</p></div>' +
       '<button type="button" id="z1hMs">' + MS + " Sign in with Microsoft</button><div class=\"or\">or</div>" +
       '<form id="z1hForm" novalidate><label for="z1hE">Email<input id="z1hE" type="email" autocomplete="username" placeholder="you@ask-karla.com"></label>' +
@@ -298,25 +299,46 @@
     list.forEach(function (old) { var s = document.createElement("script"); s.textContent = old.textContent; old.replaceWith(s); });
     ["DOMContentLoaded", "load"].forEach(function (n) { (n === "load" ? window : document).dispatchEvent(new Event(n)); });
   }
+  /* what the opening screen is waiting on; after 15 s offer a way out instead of spinning forever */
+  var stepName = "", stepTimer = null;
+  function step(name, sub) {
+    stepName = name;
+    screen("<div><h2>Opening…</h2><p>" + escH(name) + "…" + (sub ? "<br>" + escH(sub) : "") + "</p></div>");
+    clearTimeout(stepTimer);
+    stepTimer = setTimeout(stuck, 15000);
+  }
+  function stepDone() { clearTimeout(stepTimer); stepTimer = null; }
+  function stuck() {
+    screen('<div><h2>This is taking too long</h2><p>Stuck at: ' + escH(stepName) + '. Check your internet, then try again. If it keeps happening, sign in again.</p></div>' +
+      '<button class="pri" type="button" id="z1hRetry">Try again</button><button type="button" id="z1hReset">Sign in again</button>');
+    $("z1hRetry").onclick = function () { location.reload(); };
+    $("z1hReset").onclick = function () {
+      for (var i = localStorage.length - 1; i >= 0; i--) { var k = localStorage.key(i); if (/^sb-/.test(k) || k === "zero1office-auth:v1") nativeRemove.call(localStorage, k); }
+      location.reload();
+    };
+  }
   var started = false;
   function start(session) {
     if (started || !session) return; started = true;
     var email = String(session.user.email || "").toLowerCase();
     H.email = email; H.provider = (session.user.app_metadata && session.user.app_metadata.provider) || "email";
-    screen("<div><h2>Opening…</h2><p>Signed in as " + escH(email) + "</p></div>");
+    step("Loading your account", "Signed in as " + email);
     if (!/@ask-karla\.com$/.test(email)) { notMember("Only @ask-karla.com accounts can open Zero1Office."); return; }
     fetchDoc("z1users/" + email.replace(/[^a-z0-9]/g, "_")).then(function (rec) {
       if (!rec) { notMember("Your account isn't set up yet. Ask Paolo or Karla to add you in Settings > Users."); return; }
       if (rec.data && rec.data.status === "suspended") { notMember("This account is paused. Ask Paolo or Karla."); return; }
+      step("Loading shared data", "Signed in as " + email);
       return Promise.all([worker(), loadShared()]).then(function () {
+        stepDone();
         nativeSet.call(localStorage, "zero1office-auth:v1", JSON.stringify({ email: email }));
         H.ready = true; (H.waiting || []).forEach(function (f) { f(); }); H.waiting = [];
         listen(); hideScreen(); runApp();
         H.mainKey = (function () { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (/^zero1office-mock:/.test(k)) return k; } return "zero1office-mock:v3"; })();
       });
-    }).catch(function (e) { started = false; screen('<div><h2>Couldn\'t open Zero1Office</h2><p>' + escH((e && e.message) || "Check your connection and try again.") + '</p></div><button class="pri" type="button" onclick="location.reload()">Try again</button>'); });
+    }).catch(function (e) { started = false; stepDone(); screen('<div><h2>Couldn\'t open Zero1Office</h2><p>' + escH((e && e.message) || "Check your connection and try again.") + '</p></div><button class="pri" type="button" onclick="location.reload()">Try again</button>'); });
   }
   function notMember(msg) {
+    stepDone();
     screen('<div><h2>No access</h2><p>' + escH(msg) + '</p></div><button type="button" id="z1hOut">Sign out</button>');
     $("z1hOut").onclick = function () { H.sb.auth.signOut().then(function () { location.reload(); }); };
   }
@@ -338,9 +360,11 @@
 
   function boot() {
     if (!CFG.url || !CFG.anonKey || !window.supabase) { screen("<div><h2>Setup needed</h2><p>config.js is missing the Supabase Project URL and anon key.</p></div>"); return; }
-    H.sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } });
-    screen("<div><h2>Opening…</h2></div>");
-    H.sb.auth.getSession().then(function (r) {
+    // lock: run auth steps directly instead of through the browser's cross-tab lock, which can stay held by a stuck tab
+    H.sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce",
+      lock: function (name, timeout, fn) { return fn(); } } });
+    step("Checking your sign-in");
+    H.sb.auth.getSession().catch(function (e) { return { data: { session: null }, error: e }; }).then(function (r) {
       var err = /error_description=([^&]+)/.exec(location.hash + "&" + location.search);
       if (r.data.session) start(r.data.session);
       else loginScreen(err ? decodeURIComponent(err[1].replace(/\+/g, " ")) : "");
